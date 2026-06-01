@@ -1,15 +1,15 @@
 {
     "expo": {
-        "name": "pool-pal",
-        "slug": "pool-pal",
+        "name": "Side Pocket",
+        "slug": "side-pocket",
         "version": "1.0.0",
         "orientation": "portrait",
         "icon": "./assets/images/icon.png",
-        "scheme": "poolpal",
+        "scheme": "sidepocket",
         "userInterfaceStyle": "automatic",
         "ios": {
             "icon": "./assets/expo.icon",
-            "bundleIdentifier": "com.anonymous.pool-pal"
+            "bundleIdentifier": "com.anonymous.side-pocket"
         },
         "android": {
             "adaptiveIcon": {
