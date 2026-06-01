@@ -9,9 +9,10 @@
         "userInterfaceStyle": "automatic",
         "ios": {
             "icon": "./assets/expo.icon",
-            "bundleIdentifier": "com.anonymous.side-pocket"
+            "bundleIdentifier": "com.joshsilveous.sidepocket"
         },
         "android": {
+            "package": "com.joshsilveous.sidepocket",
             "adaptiveIcon": {
                 "backgroundColor": "#E6F4FE",
                 "foregroundImage": "./assets/images/android-icon-foreground.png",
