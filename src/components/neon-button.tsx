@@ -1,60 +1,44 @@
-import {
-    BlurMask,
-    Canvas,
-    Paint,
-    RoundedRect,
-} from "@shopify/react-native-skia";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
-import {
-    useSharedValue,
-    withDelay,
-    withRepeat,
-    withSequence,
-    withTiming,
-} from "react-native-reanimated";
+import { SharedValue, useSharedValue } from "react-native-reanimated";
 
-const NEON_COLOR = "#ff3c3c";
-const BORDER_RADIUS = 5;
-// Extra space around the button so the glow can bleed outside the border
-const GLOW_PADDING = 20;
+import { NeonTube } from "./neon-tube";
+
+const FONT_SIZE = 32;
+const BORDER_RADIUS = 12;
+const TUBE_WIDTH = 12;
+const GLOW_PADDING = 40;
+
+function buildRoundedRectPath(w: number, h: number, r: number): string {
+    return (
+        `M ${r} 0 H ${w - r} ` +
+        `Q ${w} 0 ${w} ${r} ` +
+        `V ${h - r} ` +
+        `Q ${w} ${h} ${w - r} ${h} ` +
+        `H ${r} ` +
+        `Q 0 ${h} 0 ${h - r} ` +
+        `V ${r} ` +
+        `Q 0 0 ${r} 0 Z`
+    );
+}
 
 export default function NeonButton(props: {
     children: string;
     onPress: () => void;
+    color?: string;
+    warmColor?: string;
+    brightness?: SharedValue<number>;
 }) {
-    const { children, onPress } = props;
+    const { children, onPress, color = "#ff2020", warmColor = "#ff9999" } = props;
 
-    // We need the button's pixel dimensions to draw the Skia canvas correctly.
-    // onLayout gives us those after the first render.
     const [size, setSize] = useState({ width: 0, height: 0 });
 
-    // Reanimated shared value for the flicker — same as before, still lives on the UI thread.
-    // Skia can consume Reanimated shared values directly as prop values.
-    const glowOpacity = useSharedValue(1);
+    const internalBrightness = useSharedValue(1);
+    const brightness = props.brightness ?? internalBrightness;
 
-    useEffect(() => {
-        glowOpacity.value = withRepeat(
-            withSequence(
-                withDelay(2000, withTiming(0.4, { duration: 60 })),
-                withTiming(1, { duration: 40 }),
-                withTiming(0.6, { duration: 80 }),
-                withTiming(1, { duration: 60 }),
-            ),
-            -1
-        );
-    }, []);
-
-    // The Canvas is larger than the button by GLOW_PADDING on all sides,
-    // then negatively offset to re-center it. This lets the glow bleed
-    // outside the button's border without being clipped.
-    const canvasWidth = size.width + GLOW_PADDING * 2;
-    const canvasHeight = size.height + GLOW_PADDING * 2;
-
-    // Inside the Canvas, the rect is drawn offset by GLOW_PADDING so it
-    // lines up with the actual button border.
-    const rectX = GLOW_PADDING;
-    const rectY = GLOW_PADDING;
+    const path = size.width > 0
+        ? buildRoundedRectPath(size.width, size.height, BORDER_RADIUS)
+        : "";
 
     return (
         <Pressable
@@ -65,59 +49,19 @@ export default function NeonButton(props: {
             }}
             style={({ pressed }) => [styles.button, pressed && styles.pressed]}
         >
-            {/* The Canvas sits behind the text, expanded + offset by GLOW_PADDING */}
-            <Canvas
-                style={[
-                    StyleSheet.absoluteFill,
-                    {
-                        top: -GLOW_PADDING,
-                        left: -GLOW_PADDING,
-                        width: canvasWidth,
-                        height: canvasHeight,
-                    },
-                ]}
-            >
-                {/*
-                  * We draw the same rounded rect shape three times with
-                  * different blur amounts — wide diffuse bloom, tight inner
-                  * glow, and a sharp unblurred core. Stacked, these produce
-                  * the layered neon tube look.
-                  *
-                  * BlurMask style="outer" means the blur spreads outward only,
-                  * not inward — so the inside of the button stays clean.
-                  */}
-                <RoundedRect
-                    x={rectX} y={rectY}
-                    width={size.width} height={size.height}
-                    r={BORDER_RADIUS}
-                    opacity={glowOpacity}
-                >
-                    <Paint color={NEON_COLOR} style="stroke" strokeWidth={2}>
-                        <BlurMask blur={16} style="outer" />
-                    </Paint>
-                </RoundedRect>
-
-                <RoundedRect
-                    x={rectX} y={rectY}
-                    width={size.width} height={size.height}
-                    r={BORDER_RADIUS}
-                    opacity={glowOpacity}
-                >
-                    <Paint color={NEON_COLOR} style="stroke" strokeWidth={2}>
-                        <BlurMask blur={5} style="outer" />
-                    </Paint>
-                </RoundedRect>
-
-                <RoundedRect
-                    x={rectX} y={rectY}
-                    width={size.width} height={size.height}
-                    r={BORDER_RADIUS}
-                    opacity={glowOpacity}
-                >
-                    <Paint color={NEON_COLOR} style="stroke" strokeWidth={1.5} />
-                </RoundedRect>
-            </Canvas>
-
+            {size.width > 0 && (
+                <NeonTube
+                    path={path}
+                    width={size.width}
+                    height={size.height}
+                    color={color}
+                    warmColor={warmColor}
+                    tubeWidth={TUBE_WIDTH}
+                    brightness={brightness}
+                    innerGlow
+                    glowPadding={GLOW_PADDING}
+                />
+            )}
             <Text style={styles.label}>{children}</Text>
         </Pressable>
     );
@@ -127,15 +71,15 @@ const styles = StyleSheet.create({
     button: {
         alignItems: "center",
         justifyContent: "center",
-        paddingHorizontal: 20,
-        paddingVertical: 10,
+        paddingHorizontal: 40,
+        paddingVertical: 20,
     },
     pressed: {
         opacity: 0.7,
     },
     label: {
-        color: NEON_COLOR,
-        fontSize: 16,
-        fontWeight: "700",
+        color: "#ffffff",
+        fontSize: FONT_SIZE,
+        fontWeight: "bold",
     },
 });
