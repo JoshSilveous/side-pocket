@@ -58,7 +58,7 @@ export default function NeonButton(props: {
                     warmColor={warmColor}
                     tubeWidth={TUBE_WIDTH}
                     brightness={brightness}
-                    innerGlow
+                    innerGlow={false}
                     glowPadding={GLOW_PADDING}
                 />
             )}

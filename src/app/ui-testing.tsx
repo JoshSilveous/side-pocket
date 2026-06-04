@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Platform, ScrollView, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSharedValue } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NeonButton from "@/components/neon-button";
+import { NeonLightSource, NeonRenderer } from "@/components/neon-renderer";
 import { NeonSlider } from "@/components/neon-slider";
 import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
 import { BottomTabInset, MaxContentWidth, Spacing } from "@/constants/theme";
 
 // HSL → hex — used to convert the hue slider value into a color string.
@@ -32,9 +32,14 @@ function warmColorFromHue(h: number): string {
 
 // Rainbow gradient stops for the hue track
 const HUE_GRADIENT = [
-    "#ff0000", "#ff8000", "#ffff00",
-    "#00ff00", "#00ffff", "#0000ff",
-    "#8000ff", "#ff0000",
+    "#ff0000",
+    "#ff8000",
+    "#ffff00",
+    "#00ff00",
+    "#00ffff",
+    "#0000ff",
+    "#8000ff",
+    "#ff0000",
 ];
 
 // Brightness track: dark at left, full white at right
@@ -58,7 +63,11 @@ export default function UITestingScreen() {
 
     // brightness is a SharedValue — the slider drives it on the UI thread,
     // NeonButton reads it on the UI thread. No JS re-renders during drag.
+    // brightness as a SharedValue — slider and NeonButton glow update on UI thread.
     const brightness = useSharedValue(1);
+    // brightnessJs mirrors the same value on the JS thread so NeonLightSource
+    // (and therefore the brick wall shader) updates when the slider moves.
+    const [brightnessJs, setBrightnessJs] = useState(1);
 
     // hue drives a color string — needs JS state since color is a string prop.
     // runOnJS fires during drag so NeonButton re-renders with the new color.
@@ -69,68 +78,84 @@ export default function UITestingScreen() {
     const warmColor = warmColorFromHue(hue);
 
     return (
-        <ScrollView
-            style={styles.scrollView}
-            contentInset={insets}
-            contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}
+        // NeonRenderer is the full-screen root — brick wall + dust particles live here.
+        // The ScrollView sits inside it as regular content.
+        <NeonRenderer
+            tileCount={0.8}
+            wallTextures={{
+                albedo: require("@/assets/textures/brick_albedo.png"),
+                normalMap: require("@/assets/textures/brick_normal.png"),
+                roughnessMap: require("@/assets/textures/brick_roughness.png"),
+            }}
         >
-            <ThemedView style={styles.container}>
+            <ScrollView
+                style={styles.scrollView}
+                contentInset={insets}
+                contentContainerStyle={[
+                    styles.contentContainer,
+                    contentPlatformStyle,
+                ]}
+            >
+                <View style={styles.container}>
+                    <ThemedText type="subtitle" style={styles.title}>
+                        UI Testing
+                    </ThemedText>
 
-                <ThemedText type="subtitle" style={styles.title}>
-                    UI Testing
-                </ThemedText>
+                    {/* NeonLightSource registers this button's position + colour with
+                        the renderer so the brick wall and dust react to it. */}
+                    <View style={styles.buttonArea}>
+                        <NeonLightSource hue={hue} brightness={brightnessJs}>
+                            <NeonButton
+                                onPress={() => {}}
+                                color={neonColor}
+                                warmColor={warmColor}
+                                brightness={brightness}
+                            >
+                                Press Me
+                            </NeonButton>
+                        </NeonLightSource>
+                    </View>
 
-                {/* Button preview */}
-                <View style={styles.buttonArea}>
-                    <NeonButton
-                        onPress={() => {}}
-                        color={neonColor}
-                        warmColor={warmColor}
-                        brightness={brightness}
-                    >
-                        Press Me
-                    </NeonButton>
+                    <View style={styles.controls}>
+                        <NeonSlider
+                            label="Brightness"
+                            value={brightness}
+                            min={0}
+                            max={1}
+                            trackColors={BRIGHTNESS_GRADIENT}
+                            onJsChange={(v) => setBrightnessJs(v)}
+                        />
+                        <NeonSlider
+                            label="Hue"
+                            value={hueShared}
+                            min={0}
+                            max={360}
+                            trackColors={HUE_GRADIENT}
+                            onJsChange={(v) => setHue(Math.round(v))}
+                        />
+                    </View>
                 </View>
-
-                {/* Controls */}
-                <View style={styles.controls}>
-                    <NeonSlider
-                        label="Brightness"
-                        value={brightness}
-                        min={0}
-                        max={1}
-                        trackColors={BRIGHTNESS_GRADIENT}
-                    />
-                    <NeonSlider
-                        label="Hue"
-                        value={hueShared}
-                        min={0}
-                        max={360}
-                        trackColors={HUE_GRADIENT}
-                        onJsChange={(v) => setHue(Math.round(v))}
-                    />
-                </View>
-
-            </ThemedView>
-        </ScrollView>
+            </ScrollView>
+        </NeonRenderer>
     );
 }
 
 const styles = StyleSheet.create({
     scrollView: {
         flex: 1,
-        backgroundColor: "black",
+        // Transparent — brick wall shows through from NeonRenderer below
+        backgroundColor: "transparent",
     },
     contentContainer: {
         flexDirection: "row",
         justifyContent: "center",
-        backgroundColor: "black",
+        backgroundColor: "transparent",
         minHeight: "100%",
     },
     container: {
         maxWidth: MaxContentWidth,
         flexGrow: 1,
-        backgroundColor: "black",
+        backgroundColor: "transparent",
         paddingHorizontal: Spacing.four,
         paddingVertical: Spacing.six,
         gap: Spacing.six,

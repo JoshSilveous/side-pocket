@@ -72,6 +72,9 @@ export function NeonTube({
                     left: -glowPadding,
                     width: canvasWidth,
                     height: canvasHeight,
+                    // Without this, Reanimated's opacity compositing layer defaults to
+                    // opaque black, making the canvas interior visible as a black rect.
+                    backgroundColor: 'transparent',
                 },
                 canvasAnimatedStyle,
             ]}
