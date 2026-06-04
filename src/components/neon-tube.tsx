@@ -7,10 +7,10 @@ import {
     Skia,
 } from "@shopify/react-native-skia";
 import { useMemo } from "react";
-import { StyleSheet } from "react-native";
-import Animated, {
+import { StyleSheet, View } from "react-native";
+import {
     SharedValue,
-    useAnimatedStyle,
+    useDerivedValue,
     useSharedValue,
 } from "react-native-reanimated";
 
@@ -51,36 +51,35 @@ export function NeonTube({
         return parsed ?? Skia.Path.Make();
     }, [pathStr]);
 
-    // Apply brightness via Animated.View opacity instead of Skia Group opacity.
-    // This uses Reanimated's own animation system which is guaranteed to work,
-    // avoiding any potential Skia/Reanimated version compatibility issues.
-    // A gentle power curve (^0.7) gives a more natural response than linear.
-    const canvasAnimatedStyle = useAnimatedStyle(() => {
+    // Drive brightness entirely inside the Skia Group — no Animated.View wrapper.
+    // An Animated.View with animated opacity creates an offscreen compositing layer
+    // that iOS/Fabric renders with a black background, making the canvas interior
+    // appear as a solid black rectangle. Driving opacity via Skia's own Group
+    // avoids any native compositing layer entirely.
+    const groupOpacity = useDerivedValue(() => {
         const b = Math.max(0, Math.min(1, activeBrightness.value));
-        return { opacity: Math.pow(b, 0.7) };
+        return Math.pow(b, 0.7);
     });
 
     const canvasWidth = width + glowPadding * 2;
     const canvasHeight = height + glowPadding * 2;
 
     return (
-        <Animated.View
-            style={[
-                StyleSheet.absoluteFill,
-                {
-                    top: -glowPadding,
-                    left: -glowPadding,
-                    width: canvasWidth,
-                    height: canvasHeight,
-                    // Without this, Reanimated's opacity compositing layer defaults to
-                    // opaque black, making the canvas interior visible as a black rect.
-                    backgroundColor: 'transparent',
-                },
-                canvasAnimatedStyle,
-            ]}
+        <View
+            pointerEvents="none"
+            style={{
+                position: "absolute",
+                top: -glowPadding,
+                left: -glowPadding,
+                width: canvasWidth,
+                height: canvasHeight,
+            }}
         >
             <Canvas style={StyleSheet.absoluteFill}>
-                <Group transform={[{ translateX: glowPadding }, { translateY: glowPadding }]}>
+                <Group
+                    opacity={groupOpacity}
+                    transform={[{ translateX: glowPadding }, { translateY: glowPadding }]}
+                >
 
                     {innerGlow && (
                         <Path path={skPath} opacity={0.35}>
@@ -132,6 +131,6 @@ export function NeonTube({
 
                 </Group>
             </Canvas>
-        </Animated.View>
+        </View>
     );
 }

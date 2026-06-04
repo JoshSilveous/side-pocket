@@ -111,10 +111,14 @@ export function DustParticles({ lights, width, height }: Props) {
   }, [width, height]);
 
   // All particles are always rendered.
-  // In darkness: extremely faint neutral grey — barely perceptible dust.
+  // In darkness: very faint neutral grey — barely perceptible dust.
   // Near a neon: lerp toward the neon's colour and brighten, like real dust
   // scattering light when it passes through a beam.
-  const BASE_OPACITY = 0.03;
+  //
+  // Use style="normal" (not "outer") so the interior of each circle is filled
+  // with the paint colour. "outer" leaves the interior transparent, which
+  // shows whatever is behind the canvas (often black) as a dark circle.
+  const BASE_OPACITY = 0.09;
   const LIT_OPACITY_MAX = 0.52;
 
   const rendered = particles.map((p) => {
@@ -138,10 +142,7 @@ export function DustParticles({ lights, width, height }: Props) {
         {rendered.map(({ p, color, opacity }, idx) => (
             <Circle key={idx} cx={p.x} cy={p.y} r={p.size}>
               <Paint color={color} opacity={opacity}>
-                {/* outer-style blur: glow extends outside the circle with no
-                    opaque interior — produces a pure soft haze, like a real
-                    illuminated dust mote with no hard dark core */}
-                <BlurMask blur={p.size * 1.8} style="outer" />
+                <BlurMask blur={p.size * 1.4} style="normal" />
               </Paint>
             </Circle>
           ))}
