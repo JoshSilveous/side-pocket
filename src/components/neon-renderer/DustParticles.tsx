@@ -22,7 +22,7 @@ import type { LightSource } from "./types";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const PARTICLE_COUNT = 160;
+const PARTICLE_COUNT = 640;
 /**
  * Simulation cadence. Dust drifts at ~10px/s, so stepping at 25fps is visually
  * identical to the old 30fps while doing ~17% less work. The render itself is a
