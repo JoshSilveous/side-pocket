@@ -1,10 +1,12 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { useSharedValue } from "react-native-reanimated";
 
 import { BrickBackground, type WallTextures } from "./BrickBackground";
 import { DustParticles } from "./DustParticles";
@@ -65,6 +67,18 @@ export function NeonRenderer({
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [lights, setLights] = useState<LightSource[]>([]);
 
+  // Reanimated mirrors of the light list so dust + brick can read lighting on the
+  // UI thread without a React re-render. `lightsShared` carries structural data
+  // (position/colour/radius); `intensityShared` carries live brightness per id.
+  const lightsShared = useSharedValue<LightSource[]>([]);
+  const intensityShared = useSharedValue<Record<string, number>>({});
+
+  // Keep the structural mirror in sync. Runs only on register/unregister/colour
+  // changes (rare) — never on flicker, which writes intensityShared directly.
+  useEffect(() => {
+    lightsShared.value = lights;
+  }, [lights, lightsShared]);
+
   const registerLight = useCallback((source: LightSource) => {
     setLights((prev) => {
       const filtered = prev.filter((l) => l.id !== source.id);
@@ -73,7 +87,7 @@ export function NeonRenderer({
   }, []);
 
   const updateLight = useCallback(
-    (id: string, updates: Pick<LightSource, "r" | "g" | "b" | "intensity">) => {
+    (id: string, updates: Pick<LightSource, "r" | "g" | "b">) => {
       setLights((prev) =>
         prev.map((l) => (l.id === id ? { ...l, ...updates } : l))
       );
@@ -81,9 +95,15 @@ export function NeonRenderer({
     []
   );
 
-  const unregisterLight = useCallback((id: string) => {
-    setLights((prev) => prev.filter((l) => l.id !== id));
-  }, []);
+  const unregisterLight = useCallback(
+    (id: string) => {
+      setLights((prev) => prev.filter((l) => l.id !== id));
+      const next = { ...intensityShared.value };
+      delete next[id];
+      intensityShared.value = next;
+    },
+    [intensityShared]
+  );
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -94,13 +114,22 @@ export function NeonRenderer({
 
   return (
     <NeonRendererContext.Provider
-      value={{ containerRef, registerLight, updateLight, unregisterLight, lights }}
+      value={{
+        containerRef,
+        registerLight,
+        updateLight,
+        unregisterLight,
+        lights,
+        lightsShared,
+        intensityShared,
+      }}
     >
       <View ref={containerRef} style={styles.container} onLayout={onLayout}>
         {/* ── Layer 0: brick background ── */}
         {ready && background && (
           <BrickBackground
-            lights={lights}
+            lightsShared={lightsShared}
+            intensityShared={intensityShared}
             width={size.width}
             height={size.height}
             textures={wallTextures}
@@ -114,7 +143,8 @@ export function NeonRenderer({
         {/* ── Layer 2: dust particles (above neon tubes) ── */}
         {ready && particles && (
           <DustParticles
-            lights={lights}
+            lightsShared={lightsShared}
+            intensityShared={intensityShared}
             width={size.width}
             height={size.height}
           />

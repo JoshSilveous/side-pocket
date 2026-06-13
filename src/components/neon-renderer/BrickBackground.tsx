@@ -5,10 +5,9 @@ import {
   Shader,
   Skia,
   useImage,
-  type SkImageSource,
+  type DataSourceParam,
 } from "@shopify/react-native-skia";
-import { useMemo } from "react";
-import { StyleSheet } from "react-native";
+import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 
 import type { LightSource } from "./types";
 
@@ -17,9 +16,10 @@ import type { LightSource } from "./types";
 // normal-mapped neon lighting.
 //
 // Coordinate convention:
-//   fragCoord is in screen pixels.
+//   fragCoord is in *canvas* pixels (the canvas may be rendered below screen
+//   resolution for performance). `screenScale` converts canvas coords back to
+//   screen pixels so lighting + tiling stay resolution-independent.
 //   texScale (uniform) converts screen coords to texture-tiling coords.
-//   ImageShaders must use tx/ty="repeat" so the texture tiles correctly.
 //
 // Normal map convention: standard OpenGL tangent-space.
 //   R = +X (right), G = +Y (up in tangent space), B = +Z (surface normal).
@@ -28,7 +28,7 @@ const TEXTURE_SHADER = `
 uniform shader albedo;
 uniform shader normalMap;
 uniform shader roughnessMap;
-uniform float2 iResolution;
+uniform float  screenScale; // canvas px -> screen px (1.0 when rendered full-res)
 uniform float2 texScale;
 uniform float2 imgSize;   // albedo pixel dimensions — used by mod() tiling
 uniform float  wallZ;
@@ -64,7 +64,9 @@ float3 applyLight(float4 light, float4 lColor, float2 fragCoord,
 }
 
 half4 main(float2 fragCoord) {
-    float2 tc = mod(fragCoord * texScale, imgSize);
+    // Work in screen pixels regardless of the canvas render resolution.
+    float2 sc = fragCoord * screenScale;
+    float2 tc = mod(sc * texScale, imgSize);
 
     half4  albedoSample = albedo.eval(tc);
     half4  normalSample = normalMap.eval(tc);
@@ -76,14 +78,14 @@ half4 main(float2 fragCoord) {
     // Near-black ambient — bricks almost invisible without neon (~2%)
     float3 totalLight = float3(0.02, 0.012, 0.015);
 
-    if (numLights > 0) { totalLight += applyLight(l0, lc0, fragCoord, N, roughness, wallZ); }
-    if (numLights > 1) { totalLight += applyLight(l1, lc1, fragCoord, N, roughness, wallZ); }
-    if (numLights > 2) { totalLight += applyLight(l2, lc2, fragCoord, N, roughness, wallZ); }
-    if (numLights > 3) { totalLight += applyLight(l3, lc3, fragCoord, N, roughness, wallZ); }
-    if (numLights > 4) { totalLight += applyLight(l4, lc4, fragCoord, N, roughness, wallZ); }
-    if (numLights > 5) { totalLight += applyLight(l5, lc5, fragCoord, N, roughness, wallZ); }
-    if (numLights > 6) { totalLight += applyLight(l6, lc6, fragCoord, N, roughness, wallZ); }
-    if (numLights > 7) { totalLight += applyLight(l7, lc7, fragCoord, N, roughness, wallZ); }
+    if (numLights > 0) { totalLight += applyLight(l0, lc0, sc, N, roughness, wallZ); }
+    if (numLights > 1) { totalLight += applyLight(l1, lc1, sc, N, roughness, wallZ); }
+    if (numLights > 2) { totalLight += applyLight(l2, lc2, sc, N, roughness, wallZ); }
+    if (numLights > 3) { totalLight += applyLight(l3, lc3, sc, N, roughness, wallZ); }
+    if (numLights > 4) { totalLight += applyLight(l4, lc4, sc, N, roughness, wallZ); }
+    if (numLights > 5) { totalLight += applyLight(l5, lc5, sc, N, roughness, wallZ); }
+    if (numLights > 6) { totalLight += applyLight(l6, lc6, sc, N, roughness, wallZ); }
+    if (numLights > 7) { totalLight += applyLight(l7, lc7, sc, N, roughness, wallZ); }
 
     // Reinhard tone map then apply to albedo
     totalLight = totalLight / (totalLight + float3(1.0));
@@ -92,6 +94,14 @@ half4 main(float2 fragCoord) {
 `;
 
 const MAX_LIGHTS = 8;
+
+/**
+ * Internal render resolution for the brick wall, as a fraction of screen size.
+ * The wall is a dim, low-frequency background, so rendering below native
+ * resolution and upscaling is imperceptible but cuts fragment-shader work
+ * (~1 / RES²). Set to 1 to disable.
+ */
+const BRICK_RENDER_SCALE = 0.75;
 
 let textureEffect: ReturnType<typeof Skia.RuntimeEffect.Make> | null = null;
 try {
@@ -107,15 +117,16 @@ try {
 
 export type WallTextures = {
   /** Colour/albedo texture. e.g. require('@/assets/textures/brick_albedo.png') */
-  albedo: SkImageSource;
+  albedo: DataSourceParam;
   /** OpenGL tangent-space normal map. Flat = RGB(128,128,255). */
-  normalMap: SkImageSource;
+  normalMap: DataSourceParam;
   /** Greyscale roughness map. White = fully rough/diffuse. */
-  roughnessMap: SkImageSource;
+  roughnessMap: DataSourceParam;
 };
 
 type Props = {
-  lights: LightSource[];
+  lightsShared: SharedValue<LightSource[]>;
+  intensityShared: SharedValue<Record<string, number>>;
   width: number;
   height: number;
   textures?: WallTextures;
@@ -134,7 +145,8 @@ type Props = {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function BrickBackground({
-  lights,
+  lightsShared,
+  intensityShared,
   width,
   height,
   textures,
@@ -145,51 +157,75 @@ export function BrickBackground({
   const normalImg    = useImage(textures?.normalMap  ?? null);
   const roughnessImg = useImage(textures?.roughnessMap ?? null);
 
-  const uniforms = useMemo(() => {
-    if (!albedoImg) return null;
+  // Reduced-resolution canvas, upscaled to fill via a top-left transform.
+  // Kept as floats (no rounding) so width*RES * (1/RES) lands exactly on `width`
+  // — avoids a sub-pixel uncovered sliver at the right/bottom edge.
+  const canvasW = Math.max(1, width * BRICK_RENDER_SCALE);
+  const canvasH = Math.max(1, height * BRICK_RENDER_SCALE);
 
-    // Scale screen-pixel coords into texture-pixel coords so that
-    // `tileCount` full tiles appear across the screen width.
-    // Aspect ratio is preserved from the albedo image dimensions.
-    const imgW = albedoImg.width();
-    const imgH = albedoImg.height();
-    // Isotropic scale — both axes use the same value so the texture's
-    // natural aspect ratio is preserved. tileCount controls tiles across width;
-    // tile height follows naturally from the image's own proportions.
-    const scaleX = (tileCount * imgW) / width;
-    const scaleY = scaleX;
+  // Isotropic texture scale — both axes share this so the texture keeps its
+  // natural aspect ratio. Computed in *screen* space (independent of render res).
+  const imgW = albedoImg ? albedoImg.width() : 1;
+  const imgH = albedoImg ? albedoImg.height() : 1;
+  const scaleX = (tileCount * imgW) / width;
 
-    const L = (i: number): number[] => lights[i]
-      ? [lights[i].x, lights[i].y, lights[i].radius, lights[i].intensity]
-      : [0, 0, 0, 0];
-    const C = (i: number): number[] => lights[i]
-      ? [lights[i].r, lights[i].g, lights[i].b, 0]
-      : [0, 0, 0, 0];
+  // Reactive uniforms: assembled on the UI thread from the shared light buffers.
+  // Brightness flicker / slider drags update intensityShared on the UI thread, so
+  // the brick redraws without any React reconciliation.
+  const uniforms = useDerivedValue(() => {
+    "worklet";
+    const lights = lightsShared.value;
+    const intens = intensityShared.value;
+    const n = lights.length < MAX_LIGHTS ? lights.length : MAX_LIGHTS;
+
+    const lp: number[][] = [];
+    const lc: number[][] = [];
+    for (let i = 0; i < MAX_LIGHTS; i++) {
+      const l = i < n ? lights[i] : null;
+      if (l) {
+        lp.push([l.x, l.y, l.radius, intens[l.id] ?? l.intensity]);
+        lc.push([l.r, l.g, l.b, 0]);
+      } else {
+        lp.push([0, 0, 0, 0]);
+        lc.push([0, 0, 0, 0]);
+      }
+    }
 
     return {
-      iResolution: [width, height],
-      texScale: [scaleX, scaleY],
+      screenScale: 1 / BRICK_RENDER_SCALE,
+      texScale: [scaleX, scaleX],
       imgSize: [imgW, imgH],
       wallZ,
-      numLights: Math.min(lights.length, MAX_LIGHTS),
-      l0: L(0), lc0: C(0),
-      l1: L(1), lc1: C(1),
-      l2: L(2), lc2: C(2),
-      l3: L(3), lc3: C(3),
-      l4: L(4), lc4: C(4),
-      l5: L(5), lc5: C(5),
-      l6: L(6), lc6: C(6),
-      l7: L(7), lc7: C(7),
+      numLights: n,
+      l0: lp[0], lc0: lc[0],
+      l1: lp[1], lc1: lc[1],
+      l2: lp[2], lc2: lc[2],
+      l3: lp[3], lc3: lc[3],
+      l4: lp[4], lc4: lc[4],
+      l5: lp[5], lc5: lc[5],
+      l6: lp[6], lc6: lc[6],
+      l7: lp[7], lc7: lc[7],
     };
-  }, [albedoImg, lights, width, height, tileCount, wallZ, brickScrollY]);
+  }, [scaleX, imgW, imgH, wallZ]);
 
   // Wait until all three textures are loaded and shader compiled
-  if (!textureEffect || !uniforms || !albedoImg || !normalImg || !roughnessImg) {
+  if (!textureEffect || !albedoImg || !normalImg || !roughnessImg) {
     return null; // NeonRenderer's black background shows through
   }
 
   return (
-    <Canvas style={{ position: "absolute", top: 0, left: 0, width, height }} pointerEvents="none">
+    <Canvas
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: canvasW,
+        height: canvasH,
+        transformOrigin: "0% 0%",
+        transform: [{ scale: 1 / BRICK_RENDER_SCALE }],
+      }}
+      pointerEvents="none"
+    >
       <Fill>
         <Shader source={textureEffect} uniforms={uniforms}>
           {/* Order must match SkSL uniform shader declarations: albedo, normalMap, roughnessMap */}
@@ -202,10 +238,3 @@ export function BrickBackground({
     </Canvas>
   );
 }
-
-const styles = StyleSheet.create({
-  canvas: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 0,
-  },
-});

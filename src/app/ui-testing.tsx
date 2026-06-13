@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform, ScrollView, StyleSheet, Switch, View } from "react-native";
 import {
-    runOnJS,
-    useAnimatedReaction,
     useDerivedValue,
     useSharedValue,
     withSequence,
@@ -58,23 +56,15 @@ export default function UITestingScreen() {
         },
     });
 
-    // ── Scroll offset → passed to NeonRenderer for parallax + light positions ──
-    const [scrollOffset, setScrollOffset] = useState(0);
-
     // ── Button 1 ────────────────────────────────────────────────────────────
     const brightness1 = useSharedValue(1);
     const hueShared1 = useSharedValue(0);
     const [hue1, setHue1] = useState(0);
     const flickerMult1 = useSharedValue(1);
+    // Drives both the tube glow and the NeonLightSource (wall + dust lighting),
+    // entirely on the UI thread — slider drags and flicker never re-render JS.
     const effectiveBrightness1 = useDerivedValue(
         () => brightness1.value * flickerMult1.value,
-    );
-    // JS-side mirror of effectiveBrightness1 — feeds NeonLightSource so the
-    // brick wall and dust lighting respond to both slider drags AND flicker.
-    const [effectiveBrightnessJs1, setEffectiveBrightnessJs1] = useState(1);
-    useAnimatedReaction(
-        () => effectiveBrightness1.value,
-        (v) => runOnJS(setEffectiveBrightnessJs1)(v),
     );
 
     // ── Button 2 ────────────────────────────────────────────────────────────
@@ -84,11 +74,6 @@ export default function UITestingScreen() {
     const flickerMult2 = useSharedValue(1);
     const effectiveBrightness2 = useDerivedValue(
         () => brightness2.value * flickerMult2.value,
-    );
-    const [effectiveBrightnessJs2, setEffectiveBrightnessJs2] = useState(1);
-    useAnimatedReaction(
-        () => effectiveBrightness2.value,
-        (v) => runOnJS(setEffectiveBrightnessJs2)(v),
     );
 
     // ── Flicker ─────────────────────────────────────────────────────────────
@@ -150,7 +135,6 @@ export default function UITestingScreen() {
     return (
         <NeonRenderer
             tileCount={0.8}
-            scrollOffset={scrollOffset}
             wallTextures={{
                 albedo:       require("@/assets/textures/brick_albedo.png"),
                 normalMap:    require("@/assets/textures/brick_normal.png"),
@@ -161,8 +145,6 @@ export default function UITestingScreen() {
                 style={styles.scrollView}
                 contentInset={insets}
                 contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}
-                scrollEventThrottle={16}
-                onScroll={(e) => setScrollOffset(e.nativeEvent.contentOffset.y)}
             >
                 <View style={styles.container}>
                     <ThemedText type="subtitle" style={styles.title}>
@@ -171,7 +153,7 @@ export default function UITestingScreen() {
 
                     {/* ── Buttons ── */}
                     <View style={styles.buttonArea}>
-                        <NeonLightSource hue={hue1} brightness={effectiveBrightnessJs1}>
+                        <NeonLightSource hue={hue1} brightness={effectiveBrightness1}>
                             <NeonButton
                                 onPress={() => {}}
                                 color={neonColor1}
@@ -182,7 +164,7 @@ export default function UITestingScreen() {
                             </NeonButton>
                         </NeonLightSource>
 
-                        <NeonLightSource hue={hue2} brightness={effectiveBrightnessJs2}>
+                        <NeonLightSource hue={hue2} brightness={effectiveBrightness2}>
                             <NeonButton
                                 onPress={() => {}}
                                 color={neonColor2}
