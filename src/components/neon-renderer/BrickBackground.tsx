@@ -73,8 +73,8 @@ half4 main(float2 fragCoord) {
     // Decode tangent-space normal: [0,1] -> [-1,1]
     float3 N = normalize(float3(normalSample.rg * 2.0 - 1.0, normalSample.b));
 
-    // Dim ambient — faintly visible brick even with no neon
-    float3 totalLight = float3(0.18, 0.12, 0.14);
+    // Near-black ambient — bricks almost invisible without neon (~2%)
+    float3 totalLight = float3(0.02, 0.012, 0.015);
 
     if (numLights > 0) { totalLight += applyLight(l0, lc0, fragCoord, N, roughness, wallZ); }
     if (numLights > 1) { totalLight += applyLight(l1, lc1, fragCoord, N, roughness, wallZ); }
@@ -181,7 +181,7 @@ export function BrickBackground({
       l6: L(6), lc6: C(6),
       l7: L(7), lc7: C(7),
     };
-  }, [albedoImg, lights, width, height, tileCount, wallZ]);
+  }, [albedoImg, lights, width, height, tileCount, wallZ, brickScrollY]);
 
   // Wait until all three textures are loaded and shader compiled
   if (!textureEffect || !uniforms || !albedoImg || !normalImg || !roughnessImg) {

@@ -1,6 +1,13 @@
-import { useState } from "react";
-import { Platform, ScrollView, StyleSheet, View } from "react-native";
-import { useSharedValue } from "react-native-reanimated";
+import { useEffect, useRef, useState } from "react";
+import { Platform, ScrollView, StyleSheet, Switch, View } from "react-native";
+import {
+    runOnJS,
+    useAnimatedReaction,
+    useDerivedValue,
+    useSharedValue,
+    withSequence,
+    withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NeonButton from "@/components/neon-button";
@@ -9,8 +16,8 @@ import { NeonSlider } from "@/components/neon-slider";
 import { ThemedText } from "@/components/themed-text";
 import { BottomTabInset, MaxContentWidth, Spacing } from "@/constants/theme";
 
-// HSL → hex — used to convert the hue slider value into a color string.
-// Saturation fixed at 100%, lightness at 50% gives the most vivid neon colors.
+// ── Colour helpers ──────────────────────────────────────────────────────────
+
 function hslToHex(h: number, s: number, l: number): string {
     s /= 100;
     l /= 100;
@@ -24,26 +31,17 @@ function hslToHex(h: number, s: number, l: number): string {
     return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
-// Warm color is the same hue but lighter + less saturated —
-// the "heating up to white" zone of the tube.
 function warmColorFromHue(h: number): string {
     return hslToHex(h, 80, 75);
 }
 
-// Rainbow gradient stops for the hue track
 const HUE_GRADIENT = [
-    "#ff0000",
-    "#ff8000",
-    "#ffff00",
-    "#00ff00",
-    "#00ffff",
-    "#0000ff",
-    "#8000ff",
-    "#ff0000",
+    "#ff0000", "#ff8000", "#ffff00", "#00ff00",
+    "#00ffff", "#0000ff", "#8000ff", "#ff0000",
 ];
-
-// Brightness track: dark at left, full white at right
 const BRIGHTNESS_GRADIENT = ["#111111", "#ffffff"];
+
+// ── Screen ──────────────────────────────────────────────────────────────────
 
 export default function UITestingScreen() {
     const safeAreaInsets = useSafeAreaInsets();
@@ -51,7 +49,6 @@ export default function UITestingScreen() {
         ...safeAreaInsets,
         bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
     };
-
     const contentPlatformStyle = Platform.select({
         android: {
             paddingTop: insets.top,
@@ -61,78 +58,185 @@ export default function UITestingScreen() {
         },
     });
 
-    // brightness is a SharedValue — the slider drives it on the UI thread,
-    // NeonButton reads it on the UI thread. No JS re-renders during drag.
-    // brightness as a SharedValue — slider and NeonButton glow update on UI thread.
-    const brightness = useSharedValue(1);
-    // brightnessJs mirrors the same value on the JS thread so NeonLightSource
-    // (and therefore the brick wall shader) updates when the slider moves.
-    const [brightnessJs, setBrightnessJs] = useState(1);
+    // ── Scroll offset → passed to NeonRenderer for parallax + light positions ──
+    const [scrollOffset, setScrollOffset] = useState(0);
 
-    // hue drives a color string — needs JS state since color is a string prop.
-    // runOnJS fires during drag so NeonButton re-renders with the new color.
-    const hueShared = useSharedValue(0); // 0–360
-    const [hue, setHue] = useState(0);
+    // ── Button 1 ────────────────────────────────────────────────────────────
+    const brightness1 = useSharedValue(1);
+    const hueShared1 = useSharedValue(0);
+    const [hue1, setHue1] = useState(0);
+    const flickerMult1 = useSharedValue(1);
+    const effectiveBrightness1 = useDerivedValue(
+        () => brightness1.value * flickerMult1.value,
+    );
+    // JS-side mirror of effectiveBrightness1 — feeds NeonLightSource so the
+    // brick wall and dust lighting respond to both slider drags AND flicker.
+    const [effectiveBrightnessJs1, setEffectiveBrightnessJs1] = useState(1);
+    useAnimatedReaction(
+        () => effectiveBrightness1.value,
+        (v) => runOnJS(setEffectiveBrightnessJs1)(v),
+    );
 
-    const neonColor = hslToHex(hue, 100, 50);
-    const warmColor = warmColorFromHue(hue);
+    // ── Button 2 ────────────────────────────────────────────────────────────
+    const brightness2 = useSharedValue(1);
+    const hueShared2 = useSharedValue(200);
+    const [hue2, setHue2] = useState(200);
+    const flickerMult2 = useSharedValue(1);
+    const effectiveBrightness2 = useDerivedValue(
+        () => brightness2.value * flickerMult2.value,
+    );
+    const [effectiveBrightnessJs2, setEffectiveBrightnessJs2] = useState(1);
+    useAnimatedReaction(
+        () => effectiveBrightness2.value,
+        (v) => runOnJS(setEffectiveBrightnessJs2)(v),
+    );
+
+    // ── Flicker ─────────────────────────────────────────────────────────────
+    // Each button has its own independent timeout chain so they flicker at
+    // different random intervals and never feel synchronised.
+    const [flickerOn, setFlickerOn] = useState(false);
+    const timeout1 = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const timeout2 = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (!flickerOn) return;
+
+        // One flicker event: two quick dips with randomised depth.
+        // Dip durations are ~2× longer than before so the "off" state reads clearly.
+        const triggerFlicker = (mult: { value: number }) => {
+            const dip1 = 0.04 + Math.random() * 0.08;
+            const dip2 = 0.06 + Math.random() * 0.08;
+            mult.value = withSequence(
+                withTiming(dip1, { duration: 80 }),   // first dip
+                withTiming(1,    { duration: 70 }),   // brief recovery
+                withTiming(dip2, { duration: 60 }),   // second dip
+                withTiming(1,    { duration: 120 }),  // restore
+            );
+        };
+
+        // Independent random schedules — button 1 fires every 0.8–4 s,
+        // button 2 every 1.2–5 s, so they're rarely in sync.
+        const schedule1 = () => {
+            timeout1.current = setTimeout(() => {
+                triggerFlicker(flickerMult1);
+                schedule1();
+            }, 800 + Math.random() * 3200);
+        };
+
+        const schedule2 = () => {
+            timeout2.current = setTimeout(() => {
+                triggerFlicker(flickerMult2);
+                schedule2();
+            }, 1200 + Math.random() * 3800);
+        };
+
+        schedule1();
+        schedule2();
+
+        return () => {
+            if (timeout1.current) clearTimeout(timeout1.current);
+            if (timeout2.current) clearTimeout(timeout2.current);
+            flickerMult1.value = 1;
+            flickerMult2.value = 1;
+        };
+    }, [flickerOn]);
+
+    // ── Derived colours ─────────────────────────────────────────────────────
+    const neonColor1 = hslToHex(hue1, 100, 50);
+    const warmColor1 = warmColorFromHue(hue1);
+    const neonColor2 = hslToHex(hue2, 100, 50);
+    const warmColor2 = warmColorFromHue(hue2);
 
     return (
-        // NeonRenderer is the full-screen root — brick wall + dust particles live here.
-        // The ScrollView sits inside it as regular content.
         <NeonRenderer
             tileCount={0.8}
+            scrollOffset={scrollOffset}
             wallTextures={{
-                albedo: require("@/assets/textures/brick_albedo.png"),
-                normalMap: require("@/assets/textures/brick_normal.png"),
+                albedo:       require("@/assets/textures/brick_albedo.png"),
+                normalMap:    require("@/assets/textures/brick_normal.png"),
                 roughnessMap: require("@/assets/textures/brick_roughness.png"),
             }}
         >
             <ScrollView
                 style={styles.scrollView}
                 contentInset={insets}
-                contentContainerStyle={[
-                    styles.contentContainer,
-                    contentPlatformStyle,
-                ]}
+                contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}
+                scrollEventThrottle={16}
+                onScroll={(e) => setScrollOffset(e.nativeEvent.contentOffset.y)}
             >
                 <View style={styles.container}>
                     <ThemedText type="subtitle" style={styles.title}>
                         UI Testing
                     </ThemedText>
 
-                    {/* NeonLightSource registers this button's position + colour with
-                        the renderer so the brick wall and dust react to it. */}
+                    {/* ── Buttons ── */}
                     <View style={styles.buttonArea}>
-                        <NeonLightSource hue={hue} brightness={brightnessJs}>
+                        <NeonLightSource hue={hue1} brightness={effectiveBrightnessJs1}>
                             <NeonButton
                                 onPress={() => {}}
-                                color={neonColor}
-                                warmColor={warmColor}
-                                brightness={brightness}
+                                color={neonColor1}
+                                warmColor={warmColor1}
+                                brightness={effectiveBrightness1}
                             >
-                                Press Me
+                                Button One
+                            </NeonButton>
+                        </NeonLightSource>
+
+                        <NeonLightSource hue={hue2} brightness={effectiveBrightnessJs2}>
+                            <NeonButton
+                                onPress={() => {}}
+                                color={neonColor2}
+                                warmColor={warmColor2}
+                                brightness={effectiveBrightness2}
+                            >
+                                Button Two
                             </NeonButton>
                         </NeonLightSource>
                     </View>
 
+                    {/* ── Controls ── */}
                     <View style={styles.controls}>
+
+                        <ThemedText style={styles.sectionLabel}>Button One</ThemedText>
                         <NeonSlider
                             label="Brightness"
-                            value={brightness}
-                            min={0}
-                            max={1}
+                            value={brightness1}
+                            min={0} max={1}
                             trackColors={BRIGHTNESS_GRADIENT}
-                            onJsChange={(v) => setBrightnessJs(v)}
                         />
                         <NeonSlider
                             label="Hue"
-                            value={hueShared}
-                            min={0}
-                            max={360}
+                            value={hueShared1}
+                            min={0} max={360}
                             trackColors={HUE_GRADIENT}
-                            onJsChange={(v) => setHue(Math.round(v))}
+                            onJsChange={(v) => setHue1(Math.round(v))}
                         />
+
+                        <ThemedText style={styles.sectionLabel}>Button Two</ThemedText>
+                        <NeonSlider
+                            label="Brightness"
+                            value={brightness2}
+                            min={0} max={1}
+                            trackColors={BRIGHTNESS_GRADIENT}
+                        />
+                        <NeonSlider
+                            label="Hue"
+                            value={hueShared2}
+                            min={0} max={360}
+                            trackColors={HUE_GRADIENT}
+                            onJsChange={(v) => setHue2(Math.round(v))}
+                        />
+
+                        <View style={styles.flickerRow}>
+                            <ThemedText style={styles.sectionLabel}>Flicker</ThemedText>
+                            <Switch
+                                value={flickerOn}
+                                onValueChange={setFlickerOn}
+                                trackColor={{ false: "#333", true: "#aaa" }}
+                                thumbColor={flickerOn ? "#fff" : "#888"}
+                            />
+                        </View>
+
                     </View>
                 </View>
             </ScrollView>
@@ -140,10 +244,11 @@ export default function UITestingScreen() {
     );
 }
 
+// ── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
     scrollView: {
         flex: 1,
-        // Transparent — brick wall shows through from NeonRenderer below
         backgroundColor: "transparent",
     },
     contentContainer: {
@@ -167,9 +272,23 @@ const styles = StyleSheet.create({
     buttonArea: {
         alignItems: "center",
         justifyContent: "center",
+        gap: Spacing.five,
         paddingVertical: Spacing.five,
     },
     controls: {
         gap: Spacing.five,
+    },
+    sectionLabel: {
+        color: "#aaaaaa",
+        fontSize: 13,
+        fontWeight: "600",
+        textTransform: "uppercase",
+        letterSpacing: 1,
+    },
+    flickerRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingTop: Spacing.two,
     },
 });

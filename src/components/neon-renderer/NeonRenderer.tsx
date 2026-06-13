@@ -37,24 +37,22 @@ type Props = {
 };
 
 /**
- * Root renderer wrapper. Place this around a full-screen view.
+ * Root renderer wrapper.
  *
- * - Renders a brick-wall background lit by registered neon sources.
- * - Renders floating dust particles visible only near neon light.
- * - Provides context so <NeonLightSource> children register themselves.
+ * Place this as the direct child of a ScrollView (or at the root of a screen).
+ * The brick background, dust particles, and registered neon lights all share the
+ * same coordinate space — so scrolling, lighting, and depth all stay in sync
+ * without any JS scroll-tracking state.
  *
  * @example
- * <NeonRenderer
- *   wallTextures={{
- *     albedo:       require('@/assets/textures/brick_albedo.png'),
- *     normalMap:    require('@/assets/textures/brick_normal.png'),
- *     roughnessMap: require('@/assets/textures/brick_roughness.png'),
- *   }}
- * >
- *   <NeonLightSource hue={160} brightness={brightnessJs}>
- *     <NeonButton hue={160} brightness={brightness}>Start Game</NeonButton>
- *   </NeonLightSource>
- * </NeonRenderer>
+ * // Scrollable screen — NeonRenderer IS the scroll content:
+ * <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+ *   <NeonRenderer wallTextures={...}>
+ *     <NeonLightSource hue={160} brightness={b}>
+ *       <NeonButton ...>Start Game</NeonButton>
+ *     </NeonLightSource>
+ *   </NeonRenderer>
+ * </ScrollView>
  */
 export function NeonRenderer({
   children,
