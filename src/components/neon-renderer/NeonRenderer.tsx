@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
-import { useSharedValue } from "react-native-reanimated";
+import { useSharedValue, type SharedValue } from "react-native-reanimated";
 
 import { BrickBackground, type WallTextures } from "./BrickBackground";
 import { DustParticles } from "./DustParticles";
@@ -36,6 +36,13 @@ type Props = {
   background?: boolean;
   /** Disable dust particles. */
   particles?: boolean;
+  /**
+   * Live vertical scroll offset (px) of the surrounding ScrollView. Pass a
+   * Reanimated `SharedValue` (e.g. from `useScrollOffset`) so the neon lighting on
+   * the wall + dust tracks the buttons as they scroll, on the UI thread. The brick
+   * and dust textures themselves stay fixed.
+   */
+  scrollOffset?: SharedValue<number>;
 };
 
 /**
@@ -62,6 +69,7 @@ export function NeonRenderer({
   tileCount,
   background = true,
   particles = true,
+  scrollOffset,
 }: Props) {
   const containerRef = useRef<View>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -69,9 +77,13 @@ export function NeonRenderer({
 
   // Reanimated mirrors of the light list so dust + brick can read lighting on the
   // UI thread without a React re-render. `lightsShared` carries structural data
-  // (position/colour/radius); `intensityShared` carries live brightness per id.
+  // (emitter geometry + colour); `intensityShared` carries live brightness per id.
   const lightsShared = useSharedValue<LightSource[]>([]);
   const intensityShared = useSharedValue<Record<string, number>>({});
+
+  // Scroll offset: use the caller's SharedValue if provided, else a static 0.
+  const internalScroll = useSharedValue(0);
+  const scrollShared = scrollOffset ?? internalScroll;
 
   // Keep the structural mirror in sync. Runs only on register/unregister/colour
   // changes (rare) — never on flicker, which writes intensityShared directly.
@@ -122,6 +134,7 @@ export function NeonRenderer({
         lights,
         lightsShared,
         intensityShared,
+        scrollShared,
       }}
     >
       <View ref={containerRef} style={styles.container} onLayout={onLayout}>
@@ -130,6 +143,7 @@ export function NeonRenderer({
           <BrickBackground
             lightsShared={lightsShared}
             intensityShared={intensityShared}
+            scrollShared={scrollShared}
             width={size.width}
             height={size.height}
             textures={wallTextures}
@@ -145,6 +159,7 @@ export function NeonRenderer({
           <DustParticles
             lightsShared={lightsShared}
             intensityShared={intensityShared}
+            scrollShared={scrollShared}
             width={size.width}
             height={size.height}
           />

@@ -11,9 +11,20 @@ import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 
 import type { LightSource } from "./types";
 
+// ── Light model ──────────────────────────────────────────────────────────────
+// The wall is lit by EMITTER POINTS sampled along each tube path (never a centre).
+// We flatten every tube's emitters into one array of point-lights; each tube splits
+// its intensity across the emitters we keep, so total wall brightness stays ≈ one
+// light's worth — just sourced from the outline. Reinhard compresses any overlap.
+const MAX_EMITTERS = 16;
+/** Max emitters kept per tube for the (soft, coarse) wall wash. */
+const BRICK_EMITTERS_PER_LIGHT = 8;
+/** Per-emitter falloff reach (px). A little tighter than the old center-light radius. */
+const BRICK_REACH = 340;
+
 // ── SkSL shader ────────────────────────────────────────────────────────────
 // Samples three textures (albedo, normal map, roughness map) and applies
-// normal-mapped neon lighting.
+// normal-mapped neon lighting from emitter point-lights.
 //
 // Coordinate convention:
 //   fragCoord is in *canvas* pixels (the canvas may be rendered below screen
@@ -32,16 +43,10 @@ uniform float  screenScale; // canvas px -> screen px (1.0 when rendered full-re
 uniform float2 texScale;
 uniform float2 imgSize;   // albedo pixel dimensions — used by mod() tiling
 uniform float  wallZ;
-uniform int    numLights;
+uniform int    numEmitters;
 
-uniform float4 l0; uniform float4 lc0;
-uniform float4 l1; uniform float4 lc1;
-uniform float4 l2; uniform float4 lc2;
-uniform float4 l3; uniform float4 lc3;
-uniform float4 l4; uniform float4 lc4;
-uniform float4 l5; uniform float4 lc5;
-uniform float4 l6; uniform float4 lc6;
-uniform float4 l7; uniform float4 lc7;
+uniform float4 emitters[${MAX_EMITTERS}];      // (x, y, reach, intensity), screen coords
+uniform float4 emitterColors[${MAX_EMITTERS}]; // (r, g, b, _)
 
 float3 applyLight(float4 light, float4 lColor, float2 fragCoord,
                   float3 N, float roughness, float wZ) {
@@ -49,7 +54,7 @@ float3 applyLight(float4 light, float4 lColor, float2 fragCoord,
     float  dist     = length(toLight);
     float  radius   = light.z;
     float  intensity = light.w;
-    if (dist >= radius) { return float3(0.0); }
+    if (dist >= radius || intensity <= 0.0) { return float3(0.0); }
 
     float atten    = 1.0 - dist / radius;
     atten          = atten * atten;
@@ -78,22 +83,16 @@ half4 main(float2 fragCoord) {
     // Near-black ambient — bricks almost invisible without neon (~2%)
     float3 totalLight = float3(0.02, 0.012, 0.015);
 
-    if (numLights > 0) { totalLight += applyLight(l0, lc0, sc, N, roughness, wallZ); }
-    if (numLights > 1) { totalLight += applyLight(l1, lc1, sc, N, roughness, wallZ); }
-    if (numLights > 2) { totalLight += applyLight(l2, lc2, sc, N, roughness, wallZ); }
-    if (numLights > 3) { totalLight += applyLight(l3, lc3, sc, N, roughness, wallZ); }
-    if (numLights > 4) { totalLight += applyLight(l4, lc4, sc, N, roughness, wallZ); }
-    if (numLights > 5) { totalLight += applyLight(l5, lc5, sc, N, roughness, wallZ); }
-    if (numLights > 6) { totalLight += applyLight(l6, lc6, sc, N, roughness, wallZ); }
-    if (numLights > 7) { totalLight += applyLight(l7, lc7, sc, N, roughness, wallZ); }
+    for (int i = 0; i < ${MAX_EMITTERS}; i++) {
+        if (i >= numEmitters) { break; }
+        totalLight += applyLight(emitters[i], emitterColors[i], sc, N, roughness, wallZ);
+    }
 
     // Reinhard tone map then apply to albedo
     totalLight = totalLight / (totalLight + float3(1.0));
     return half4(half3(albedoSample.rgb * totalLight), 1.0);
 }
 `;
-
-const MAX_LIGHTS = 8;
 
 /**
  * Internal render resolution for the brick wall, as a fraction of screen size.
@@ -127,6 +126,7 @@ export type WallTextures = {
 type Props = {
   lightsShared: SharedValue<LightSource[]>;
   intensityShared: SharedValue<Record<string, number>>;
+  scrollShared: SharedValue<number>;
   width: number;
   height: number;
   textures?: WallTextures;
@@ -147,6 +147,7 @@ type Props = {
 export function BrickBackground({
   lightsShared,
   intensityShared,
+  scrollShared,
   width,
   height,
   textures,
@@ -170,24 +171,42 @@ export function BrickBackground({
   const scaleX = (tileCount * imgW) / width;
 
   // Reactive uniforms: assembled on the UI thread from the shared light buffers.
-  // Brightness flicker / slider drags update intensityShared on the UI thread, so
-  // the brick redraws without any React reconciliation.
+  // Brightness flicker, slider drags AND scroll update shared values on the UI
+  // thread, so the brick redraws without any React reconciliation. Each tube's
+  // emitters are strided to BRICK_EMITTERS_PER_LIGHT and its intensity split across
+  // them; emitter Y is content-space, so we subtract the live scroll offset.
   const uniforms = useDerivedValue(() => {
     "worklet";
     const lights = lightsShared.value;
     const intens = intensityShared.value;
-    const n = lights.length < MAX_LIGHTS ? lights.length : MAX_LIGHTS;
+    const scroll = scrollShared.value;
 
-    const lp: number[][] = [];
-    const lc: number[][] = [];
-    for (let i = 0; i < MAX_LIGHTS; i++) {
-      const l = i < n ? lights[i] : null;
-      if (l) {
-        lp.push([l.x, l.y, l.radius, intens[l.id] ?? l.intensity]);
-        lc.push([l.r, l.g, l.b, 0]);
-      } else {
-        lp.push([0, 0, 0, 0]);
-        lc.push([0, 0, 0, 0]);
+    const emitters: number[] = new Array(MAX_EMITTERS * 4).fill(0);
+    const emitterColors: number[] = new Array(MAX_EMITTERS * 4).fill(0);
+    let count = 0;
+
+    for (let k = 0; k < lights.length && count < MAX_EMITTERS; k++) {
+      const l = lights[k];
+      const em = l.emitters;
+      const pts = em.length / 2;
+      if (pts <= 0) continue;
+
+      const take = Math.min(BRICK_EMITTERS_PER_LIGHT, pts);
+      const stride = pts / take;
+      const intensity = (intens[l.id] ?? l.intensity) / take;
+
+      for (let s = 0; s < take && count < MAX_EMITTERS; s++) {
+        const idx = Math.floor(s * stride) * 2;
+        const o = count * 4;
+        emitters[o] = em[idx];
+        emitters[o + 1] = em[idx + 1] - scroll;
+        emitters[o + 2] = BRICK_REACH;
+        emitters[o + 3] = intensity;
+        emitterColors[o] = l.r;
+        emitterColors[o + 1] = l.g;
+        emitterColors[o + 2] = l.b;
+        emitterColors[o + 3] = 0;
+        count++;
       }
     }
 
@@ -196,15 +215,9 @@ export function BrickBackground({
       texScale: [scaleX, scaleX],
       imgSize: [imgW, imgH],
       wallZ,
-      numLights: n,
-      l0: lp[0], lc0: lc[0],
-      l1: lp[1], lc1: lc[1],
-      l2: lp[2], lc2: lc[2],
-      l3: lp[3], lc3: lc[3],
-      l4: lp[4], lc4: lc[4],
-      l5: lp[5], lc5: lc[5],
-      l6: lp[6], lc6: lc[6],
-      l7: lp[7], lc7: lc[7],
+      numEmitters: count,
+      emitters,
+      emitterColors,
     };
   }, [scaleX, imgW, imgH, wallZ]);
 

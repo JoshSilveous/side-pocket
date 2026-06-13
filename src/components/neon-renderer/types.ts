@@ -4,10 +4,14 @@ import type { SharedValue } from "react-native-reanimated";
 
 export type LightSource = {
   id: string;
-  /** Center X in NeonRenderer's coordinate space */
-  x: number;
-  /** Center Y in NeonRenderer's coordinate space */
-  y: number;
+  /**
+   * Emitter points sampled along the tube path, flattened as
+   * `[x0, y0, x1, y1, …]` in **content (pre-scroll) coordinates**.
+   * Light emanates from these points — never from a center/centroid — so a hollow
+   * shape stays dark in its middle and the model works for any tube path.
+   * Consumers subtract the live scroll offset to get on-screen positions.
+   */
+  emitters: number[];
   /** Red channel 0–1 */
   r: number;
   /** Green channel 0–1 */
@@ -16,8 +20,6 @@ export type LightSource = {
   b: number;
   /** Overall intensity 0–1 — the *registered* value. Live intensity (flicker/slider) lives in `intensityShared`. */
   intensity: number;
-  /** Falloff radius in pixels */
-  radius: number;
 };
 
 export type NeonRendererContextValue = {
@@ -40,4 +42,10 @@ export type NeonRendererContextValue = {
    * React. Consumers fall back to `LightSource.intensity` when an id is absent.
    */
   intensityShared: SharedValue<Record<string, number>>;
+  /**
+   * Live vertical scroll offset (px). Emitters are stored in content coordinates;
+   * consumers subtract this to track buttons as they scroll, while the brick + dust
+   * *textures* stay fixed.
+   */
+  scrollShared: SharedValue<number>;
 };

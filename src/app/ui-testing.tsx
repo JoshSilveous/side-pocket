@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform, ScrollView, StyleSheet, Switch, View } from "react-native";
 import {
+    useAnimatedRef,
     useDerivedValue,
+    useScrollOffset,
     useSharedValue,
     withSequence,
     withTiming,
@@ -132,9 +134,15 @@ export default function UITestingScreen() {
     const neonColor2 = hslToHex(hue2, 100, 50);
     const warmColor2 = warmColorFromHue(hue2);
 
+    // ── Scroll offset → NeonRenderer so the neon lighting tracks the buttons as
+    // they scroll (the brick + dust textures themselves stay fixed). UI thread.
+    const scrollRef = useAnimatedRef<ScrollView>();
+    const scrollY = useScrollOffset(scrollRef);
+
     return (
         <NeonRenderer
             tileCount={0.8}
+            scrollOffset={scrollY}
             wallTextures={{
                 albedo:       require("@/assets/textures/brick_albedo.png"),
                 normalMap:    require("@/assets/textures/brick_normal.png"),
@@ -142,6 +150,7 @@ export default function UITestingScreen() {
             }}
         >
             <ScrollView
+                ref={scrollRef}
                 style={styles.scrollView}
                 contentInset={insets}
                 contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}
