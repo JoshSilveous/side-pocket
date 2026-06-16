@@ -36,8 +36,14 @@ function warmColorFromHue(h: number): string {
 }
 
 const HUE_GRADIENT = [
-    "#ff0000", "#ff8000", "#ffff00", "#00ff00",
-    "#00ffff", "#0000ff", "#8000ff", "#ff0000",
+    "#ff0000",
+    "#ff8000",
+    "#ffff00",
+    "#00ff00",
+    "#00ffff",
+    "#0000ff",
+    "#8000ff",
+    "#ff0000",
 ];
 const BRIGHTNESS_GRADIENT = ["#111111", "#ffffff"];
 
@@ -94,27 +100,33 @@ export default function UITestingScreen() {
             const dip1 = 0.04 + Math.random() * 0.08;
             const dip2 = 0.06 + Math.random() * 0.08;
             mult.value = withSequence(
-                withTiming(dip1, { duration: 80 }),   // first dip
-                withTiming(1,    { duration: 70 }),   // brief recovery
-                withTiming(dip2, { duration: 60 }),   // second dip
-                withTiming(1,    { duration: 120 }),  // restore
+                withTiming(dip1, { duration: 80 }), // first dip
+                withTiming(1, { duration: 70 }), // brief recovery
+                withTiming(dip2, { duration: 60 }), // second dip
+                withTiming(1, { duration: 120 }), // restore
             );
         };
 
         // Independent random schedules — button 1 fires every 0.8–4 s,
         // button 2 every 1.2–5 s, so they're rarely in sync.
         const schedule1 = () => {
-            timeout1.current = setTimeout(() => {
-                triggerFlicker(flickerMult1);
-                schedule1();
-            }, 800 + Math.random() * 3200);
+            timeout1.current = setTimeout(
+                () => {
+                    triggerFlicker(flickerMult1);
+                    schedule1();
+                },
+                800 + Math.random() * 3200,
+            );
         };
 
         const schedule2 = () => {
-            timeout2.current = setTimeout(() => {
-                triggerFlicker(flickerMult2);
-                schedule2();
-            }, 1200 + Math.random() * 3800);
+            timeout2.current = setTimeout(
+                () => {
+                    triggerFlicker(flickerMult2);
+                    schedule2();
+                },
+                1200 + Math.random() * 3800,
+            );
         };
 
         schedule1();
@@ -144,8 +156,8 @@ export default function UITestingScreen() {
             tileCount={0.8}
             scrollOffset={scrollY}
             wallTextures={{
-                albedo:       require("@/assets/textures/brick_albedo.png"),
-                normalMap:    require("@/assets/textures/brick_normal.png"),
+                albedo: require("@/assets/textures/brick_albedo.png"),
+                normalMap: require("@/assets/textures/brick_normal.png"),
                 roughnessMap: require("@/assets/textures/brick_roughness.png"),
             }}
         >
@@ -153,7 +165,10 @@ export default function UITestingScreen() {
                 ref={scrollRef}
                 style={styles.scrollView}
                 contentInset={insets}
-                contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}
+                contentContainerStyle={[
+                    styles.contentContainer,
+                    contentPlatformStyle,
+                ]}
             >
                 <View style={styles.container}>
                     <ThemedText type="subtitle" style={styles.title}>
@@ -162,7 +177,10 @@ export default function UITestingScreen() {
 
                     {/* ── Buttons ── */}
                     <View style={styles.buttonArea}>
-                        <NeonLightSource hue={hue1} brightness={effectiveBrightness1}>
+                        <NeonLightSource
+                            hue={hue1}
+                            brightness={effectiveBrightness1}
+                        >
                             <NeonButton
                                 onPress={() => {}}
                                 color={neonColor1}
@@ -173,7 +191,10 @@ export default function UITestingScreen() {
                             </NeonButton>
                         </NeonLightSource>
 
-                        <NeonLightSource hue={hue2} brightness={effectiveBrightness2}>
+                        <NeonLightSource
+                            hue={hue2}
+                            brightness={effectiveBrightness2}
+                        >
                             <NeonButton
                                 onPress={() => {}}
                                 color={neonColor2}
@@ -187,39 +208,48 @@ export default function UITestingScreen() {
 
                     {/* ── Controls ── */}
                     <View style={styles.controls}>
-
-                        <ThemedText style={styles.sectionLabel}>Button One</ThemedText>
+                        <ThemedText style={styles.sectionLabel}>
+                            Button One
+                        </ThemedText>
                         <NeonSlider
                             label="Brightness"
                             value={brightness1}
-                            min={0} max={1}
+                            min={0}
+                            max={1}
                             trackColors={BRIGHTNESS_GRADIENT}
                         />
                         <NeonSlider
                             label="Hue"
                             value={hueShared1}
-                            min={0} max={360}
+                            min={0}
+                            max={360}
                             trackColors={HUE_GRADIENT}
                             onJsChange={(v) => setHue1(Math.round(v))}
                         />
 
-                        <ThemedText style={styles.sectionLabel}>Button Two</ThemedText>
+                        <ThemedText style={styles.sectionLabel}>
+                            Button Two
+                        </ThemedText>
                         <NeonSlider
                             label="Brightness"
                             value={brightness2}
-                            min={0} max={1}
+                            min={0}
+                            max={1}
                             trackColors={BRIGHTNESS_GRADIENT}
                         />
                         <NeonSlider
                             label="Hue"
                             value={hueShared2}
-                            min={0} max={360}
+                            min={0}
+                            max={360}
                             trackColors={HUE_GRADIENT}
                             onJsChange={(v) => setHue2(Math.round(v))}
                         />
 
                         <View style={styles.flickerRow}>
-                            <ThemedText style={styles.sectionLabel}>Flicker</ThemedText>
+                            <ThemedText style={styles.sectionLabel}>
+                                Flicker
+                            </ThemedText>
                             <Switch
                                 value={flickerOn}
                                 onValueChange={setFlickerOn}
@@ -227,7 +257,6 @@ export default function UITestingScreen() {
                                 thumbColor={flickerOn ? "#fff" : "#888"}
                             />
                         </View>
-
                     </View>
                 </View>
             </ScrollView>
