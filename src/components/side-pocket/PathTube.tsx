@@ -155,16 +155,26 @@ export function PathTube({
                         </Paint>
                     </Path>
 
-                    {/* Hot center */}
+                    {/* Hot core glow — soft white halo just around the core. */}
                     <Path path={layout.local} color="transparent">
                         <Paint
                             color="#ffffff"
                             style="stroke"
-                            strokeWidth={tubeWidth * 0.25}
+                            strokeWidth={tubeWidth * 0.3}
                         >
                             <BlurMask blur={hotBlur} style="normal" />
                         </Paint>
                     </Path>
+
+                    {/* Hot core — crisp white center line (no blur) for a clear core. */}
+                    <Path
+                        path={layout.local}
+                        color="#ffffff"
+                        style="stroke"
+                        strokeWidth={tubeWidth * 0.22}
+                        strokeCap="round"
+                        strokeJoin="round"
+                    />
                 </Group>
             </Canvas>
         </Animated.View>
