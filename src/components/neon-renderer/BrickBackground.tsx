@@ -16,11 +16,20 @@ import type { LightSource } from "./types";
 // We flatten every tube's emitters into one array of point-lights; each tube splits
 // its intensity across the emitters we keep, so total wall brightness stays ≈ one
 // light's worth — just sourced from the outline. Reinhard compresses any overlap.
-const MAX_EMITTERS = 16;
-/** Max emitters kept per tube for the (soft, coarse) wall wash. */
+const MAX_EMITTERS = 48;
+/** Max emitters kept per tube for the (soft, coarse) wall wash. With many lights
+ *  (e.g. a per-path neon sign) the budget is split adaptively so each light still
+ *  gets at least one wall emitter — see `perLight` below. */
 const BRICK_EMITTERS_PER_LIGHT = 4;
 /** Per-emitter falloff reach (px). Extended range for a more dramatic glow. */
 const BRICK_REACH = 500;
+/**
+ * Extra damping for low-emitter (per-path neon sign) lights. A dense sign stacks
+ * ~30 lights on the wall, which sum up and read too bright even at 1x each, so we
+ * scale those down. Buttons (which use the full BRICK_EMITTERS_PER_LIGHT) are
+ * unaffected. Lower = dimmer sign wall wash.
+ */
+const SIGN_WALL_GAIN = 0.2;
 
 // ── SkSL shader ────────────────────────────────────────────────────────────
 // Samples three textures (albedo, normal map, roughness map) and applies
@@ -187,15 +196,34 @@ export function BrickBackground({
         const emitterColors: number[] = new Array(MAX_EMITTERS * 4).fill(0);
         let count = 0;
 
+        // Split the emitter budget across lights: a couple of buttons get the full
+        // BRICK_EMITTERS_PER_LIGHT each; a 30-path sign gets ~1 each. Keeps the
+        // button wall wash identical while letting every path light the wall.
+        const perLight = Math.max(
+            1,
+            Math.min(
+                BRICK_EMITTERS_PER_LIGHT,
+                Math.floor(MAX_EMITTERS / Math.max(1, lights.length)),
+            ),
+        );
+
         for (let k = 0; k < lights.length && count < MAX_EMITTERS; k++) {
             const l = lights[k];
             const em = l.emitters;
             const pts = em.length / 2;
             if (pts <= 0) continue;
 
-            const take = Math.min(BRICK_EMITTERS_PER_LIGHT, pts);
+            const take = Math.min(perLight, pts);
             const stride = pts / take;
-            const intensity = ((intens[l.id] ?? l.intensity) / take) * 3;
+            // The 3x boost assumes a light spreads across ~4 emitters (buttons). A
+            // per-path sign light uses 1 emitter, so cap the boost at `take` (buttons
+            // stay at 3x). Low-emitter sign lights also get SIGN_WALL_GAIN damping,
+            // since ~30 of them overlap on the wall and otherwise read too bright.
+            const boost = Math.min(3, take);
+            const densityGain =
+                take >= BRICK_EMITTERS_PER_LIGHT ? 1 : SIGN_WALL_GAIN;
+            const intensity =
+                ((intens[l.id] ?? l.intensity) / take) * boost * densityGain;
 
             for (let s = 0; s < take && count < MAX_EMITTERS; s++) {
                 const idx = Math.floor(s * stride) * 2;
