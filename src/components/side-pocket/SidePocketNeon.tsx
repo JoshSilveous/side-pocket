@@ -539,8 +539,6 @@ export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
                     {
                         width: signW + PAD * 2,
                         height: signH + PAD * 2,
-                        borderWidth: 5,
-                        borderColor: "red",
                     },
                     style,
                 ]}
