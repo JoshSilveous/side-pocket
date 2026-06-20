@@ -15,6 +15,7 @@ import { NeonLightSource, NeonRenderer } from "@/components/neon-renderer";
 import { NeonSlider } from "@/components/neon-slider";
 import { ThemedText } from "@/components/themed-text";
 import { BottomTabInset, MaxContentWidth, Spacing } from "@/constants/theme";
+import SidePocketHaptics from "../../modules/side-pocket-haptics/src/SidePocketHapticsModule";
 
 // ── Colour helpers ──────────────────────────────────────────────────────────
 
@@ -63,6 +64,9 @@ export default function UITestingScreen() {
             paddingBottom: insets.bottom,
         },
     });
+
+    console.log("haptic tier:", SidePocketHaptics.getCapability());
+    ``;
 
     // ── Button 1 ────────────────────────────────────────────────────────────
     const brightness1 = useSharedValue(1);
