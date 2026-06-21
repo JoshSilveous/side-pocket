@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/components/neon-button.tsx", "src/components/neon-text.tsx", "src/components/neon-tube.tsx"]
+}

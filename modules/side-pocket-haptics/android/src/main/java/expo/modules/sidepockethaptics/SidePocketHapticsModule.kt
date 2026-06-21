@@ -48,6 +48,12 @@ class SidePocketHapticsModule : Module() {
 
     Function("stop") { vibrator?.cancel() }
 
+    // Start a sustained buzz held until stopContinuous() — e.g. a button hold.
+    // A long one-shot we cancel on release (far longer than any real hold).
+    Function("startContinuous") { intensity: Double, _: Double -> oneShot(60_000L, intensity) }
+
+    Function("stopContinuous") { vibrator?.cancel() }
+
     // ── Playback ──────────────────────────────────────────────────────────────
     // Sharpness has no Android analogue, so it's accepted and ignored.
     Function("playTransient") { intensity: Double, _: Double ->

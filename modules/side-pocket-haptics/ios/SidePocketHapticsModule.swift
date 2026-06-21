@@ -4,6 +4,7 @@ import UIKit
 
 public class SidePocketHapticsModule: Module {
   private var engine: CHHapticEngine?
+  private var continuousPlayer: CHHapticPatternPlayer?
 
   private var supportsHaptics: Bool {
     CHHapticEngine.capabilitiesForHardware().supportsHaptics
@@ -26,7 +27,17 @@ public class SidePocketHapticsModule: Module {
     }
 
     Function("stop") {
+      self.stopContinuousPlayer()
       try? self.engine?.stop()
+    }
+
+    // Start a sustained buzz held until stopContinuous() — e.g. a button hold.
+    Function("startContinuous") { (intensity: Double, sharpness: Double) in
+      self.startContinuous(intensity: intensity, sharpness: sharpness)
+    }
+
+    Function("stopContinuous") {
+      self.stopContinuousPlayer()
     }
 
     // ── Playback ──────────────────────────────────────────────────────────────
@@ -152,6 +163,37 @@ public class SidePocketHapticsModule: Module {
     let curve = CHHapticParameterCurve(
       parameterID: .hapticIntensityControl, controlPoints: points, relativeTime: 0)
     play(events: [event], curves: [curve])
+  }
+
+  // MARK: - Sustained buzz (button hold)
+
+  private func startContinuous(intensity: Double, sharpness: Double) {
+    guard supportsHaptics else { return }
+    ensureEngine()
+    guard let engine = engine else { return }
+    stopContinuousPlayer()
+    // Long fixed duration — far longer than any real hold; stopped on release.
+    let event = CHHapticEvent(
+      eventType: .hapticContinuous,
+      parameters: [
+        CHHapticEventParameter(parameterID: .hapticIntensity, value: clamp(intensity)),
+        CHHapticEventParameter(parameterID: .hapticSharpness, value: clamp(sharpness)),
+      ],
+      relativeTime: 0,
+      duration: 60.0)
+    do {
+      let pattern = try CHHapticPattern(events: [event], parameterCurves: [])
+      let player = try engine.makePlayer(with: pattern)
+      try player.start(atTime: CHHapticTimeImmediate)
+      continuousPlayer = player
+    } catch {
+      continuousPlayer = nil
+    }
+  }
+
+  private func stopContinuousPlayer() {
+    try? continuousPlayer?.stop(atTime: CHHapticTimeImmediate)
+    continuousPlayer = nil
   }
 
   private func clamp(_ v: Double) -> Float {

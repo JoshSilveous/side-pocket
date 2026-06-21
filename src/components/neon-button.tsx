@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { useEffect, useState } from "react";
+import { Pressable, StyleSheet } from "react-native";
 import { SharedValue, useSharedValue } from "react-native-reanimated";
 
+import { NeonText } from "./neon-text";
 import { NeonTube } from "./neon-tube";
+import SidePocketHaptics from "../../modules/side-pocket-haptics";
 
 // ════════════════════════════════════════════════════════════════════════════
 //  TUBE LOOK — tweak the button's neon here.
@@ -12,7 +14,7 @@ import { NeonTube } from "./neon-tube";
 
 /** Tube thickness in screen px. Everything (glow radii, hot core) scales off this.
  *  The splash sign uses 4; buttons read well a touch chunkier. */
-const TUBE_WIDTH = 6;
+const TUBE_WIDTH = 10;
 
 /** Glow spread. 1 = stock splash look, >1 = wider/softer bloom, <1 = tighter. */
 const GLOW = 1;
@@ -21,9 +23,21 @@ const GLOW = 1;
  *  glow; a flicker/press animation can still drive the SharedValue past this. */
 const BASE_BRIGHTNESS = 1;
 
+/** Inner padding (px) between the label and the tube. Tweak to taste. */
+const PADDING_H = 22;
+const PADDING_V = 12;
+
 const FONT_SIZE = 32;
 const BORDER_RADIUS = 12;
 const GLOW_PADDING = 40;
+
+// ── Press haptics — crisp tap down, low buzz while held, dull thud on release ──
+const PRESS_INTENSITY = 1;
+const PRESS_SHARPNESS = 1; // hard + crisp
+const HOLD_INTENSITY = 0.3;
+const HOLD_SHARPNESS = 0.3; // low buzz while held
+const RELEASE_INTENSITY = 1;
+const RELEASE_SHARPNESS = 0.15; // hard + dull
 
 function buildRoundedRectPath(w: number, h: number, r: number): string {
     return (
@@ -44,21 +58,59 @@ export default function NeonButton(props: {
     color?: string;
     warmColor?: string;
     brightness?: SharedValue<number>;
+    /** Press/hold/release haptics. Default: true. */
+    haptics?: boolean;
 }) {
-    const { children, onPress, color = "#ff2020", warmColor = "#ff9999" } = props;
+    const {
+        children,
+        onPress,
+        color = "#ff2020",
+        warmColor = "#ff9999",
+        haptics = true,
+    } = props;
 
     const [size, setSize] = useState({ width: 0, height: 0 });
 
     const internalBrightness = useSharedValue(BASE_BRIGHTNESS);
     const brightness = props.brightness ?? internalBrightness;
 
-    const path = size.width > 0
-        ? buildRoundedRectPath(size.width, size.height, BORDER_RADIUS)
-        : "";
+    // Warm the haptic engine so the first press has no cold-start latency, and make
+    // sure a held buzz is stopped if the button unmounts mid-press.
+    useEffect(() => {
+        if (!haptics) return;
+        SidePocketHaptics.prepare().catch(() => {});
+        return () => SidePocketHaptics.stopContinuous();
+    }, [haptics]);
+
+    const path =
+        size.width > 0
+            ? buildRoundedRectPath(size.width, size.height, BORDER_RADIUS)
+            : "";
 
     return (
         <Pressable
             onPress={onPress}
+            onPressIn={() => {
+                if (!haptics) return;
+                // Crisp tap down, then the low buzz that lasts while held.
+                SidePocketHaptics.playTransient(
+                    PRESS_INTENSITY,
+                    PRESS_SHARPNESS,
+                );
+                SidePocketHaptics.startContinuous(
+                    HOLD_INTENSITY,
+                    HOLD_SHARPNESS,
+                );
+            }}
+            onPressOut={() => {
+                if (!haptics) return;
+                // Stop the hold buzz, then a dull thud on release.
+                SidePocketHaptics.stopContinuous();
+                SidePocketHaptics.playTransient(
+                    RELEASE_INTENSITY,
+                    RELEASE_SHARPNESS,
+                );
+            }}
             onLayout={(e) => {
                 const { width, height } = e.nativeEvent.layout;
                 setSize({ width, height });
@@ -79,7 +131,17 @@ export default function NeonButton(props: {
                     glowPadding={GLOW_PADDING}
                 />
             )}
-            <Text style={styles.label}>{children}</Text>
+            {/* Label shares the button's brightness so it powers on / flickers
+                with the tube, and glows in the same colour. */}
+            <NeonText
+                fontSize={FONT_SIZE}
+                color={color}
+                warmColor={warmColor}
+                glow={GLOW}
+                brightness={brightness}
+            >
+                {children}
+            </NeonText>
         </Pressable>
     );
 }
@@ -88,15 +150,10 @@ const styles = StyleSheet.create({
     button: {
         alignItems: "center",
         justifyContent: "center",
-        paddingHorizontal: 40,
-        paddingVertical: 20,
+        paddingHorizontal: PADDING_H,
+        paddingVertical: PADDING_V,
     },
     pressed: {
         opacity: 0.7,
-    },
-    label: {
-        color: "#ffffff",
-        fontSize: FONT_SIZE,
-        fontWeight: "bold",
     },
 });

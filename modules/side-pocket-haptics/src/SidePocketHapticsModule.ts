@@ -18,6 +18,12 @@ declare class SidePocketHapticsModule extends NativeModule<{}> {
   /** A steady buzz held for `durationMs` at fixed `intensity`/`sharpness` (0..1). */
   playContinuous(durationMs: number, intensity: number, sharpness: number): void;
 
+  /** Start a sustained buzz that plays until `stopContinuous()` (e.g. button hold). */
+  startContinuous(intensity: number, sharpness: number): void;
+
+  /** Stop the buzz started by `startContinuous()`. */
+  stopContinuous(): void;
+
   /**
    * The "sizzle": one continuous buzz over `durationMs` whose intensity follows
    * `intensities` (0..1 samples, spread evenly across the duration). This is the

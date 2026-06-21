@@ -15,6 +15,8 @@ class SidePocketHapticsModule extends NativeModule<{}> {
     _intensity: number,
     _sharpness: number,
   ): void {}
+  startContinuous(_intensity: number, _sharpness: number): void {}
+  stopContinuous(): void {}
   playCurve(
     _durationMs: number,
     _intensities: number[],
