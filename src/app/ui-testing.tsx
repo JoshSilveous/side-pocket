@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Platform, ScrollView, StyleSheet, Switch, View } from "react-native";
+import {
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    View,
+} from "react-native";
 import {
     useAnimatedRef,
     useDerivedValue,
@@ -15,7 +22,9 @@ import { NeonLightSource, NeonRenderer } from "@/components/neon-renderer";
 import { NeonSlider } from "@/components/neon-slider";
 import { ThemedText } from "@/components/themed-text";
 import { BottomTabInset, MaxContentWidth, Spacing } from "@/constants/theme";
-import SidePocketHaptics from "../../modules/side-pocket-haptics/src/SidePocketHapticsModule";
+import SidePocketHaptics, {
+    type HapticTier,
+} from "../../modules/side-pocket-haptics";
 
 // ── Colour helpers ──────────────────────────────────────────────────────────
 
@@ -47,6 +56,32 @@ const HUE_GRADIENT = [
     "#ff0000",
 ];
 const BRIGHTNESS_GRADIENT = ["#111111", "#ffffff"];
+const SHARPNESS_GRADIENT = ["#5b2dff", "#2dd4ff"];
+
+// ── Haptics test data ─────────────────────────────────────────────────────────
+
+/** Drum-pad presets: each fires a transient at a fixed intensity × sharpness. */
+const TAP_PADS: { title: string; sub: string; i: number; s: number }[] = [
+    { title: "Soft", sub: "dull", i: 0.4, s: 0.1 },
+    { title: "Soft", sub: "crisp", i: 0.4, s: 0.95 },
+    { title: "Medium", sub: "dull", i: 0.7, s: 0.2 },
+    { title: "Medium", sub: "crisp", i: 0.7, s: 0.9 },
+    { title: "Hard", sub: "dull", i: 1, s: 0.3 },
+    { title: "Hard", sub: "crisp", i: 1, s: 1 },
+];
+
+/** A ripple-style "sizzle" envelope: fast attack, wobbling sustain, smooth decay. */
+function sizzleEnvelope(steps = 28): number[] {
+    const out: number[] = [];
+    for (let k = 0; k < steps; k++) {
+        const t = steps === 1 ? 0 : k / (steps - 1);
+        const attack = Math.min(1, t / 0.12);
+        const decay = 1 - Math.max(0, (t - 0.55) / 0.45);
+        const wobble = 0.7 + 0.3 * Math.sin(t * Math.PI * 20); // the sizzle crackle
+        out.push(Math.max(0, attack * decay * wobble));
+    }
+    return out;
+}
 
 // ── Screen ──────────────────────────────────────────────────────────────────
 
@@ -65,8 +100,17 @@ export default function UITestingScreen() {
         },
     });
 
-    console.log("haptic tier:", SidePocketHaptics.getCapability());
-    ``;
+    // ── Haptics lab ───────────────────────────────────────────────────────────
+    const [tier, setTier] = useState<HapticTier | null>(null);
+    const [intensity, setIntensity] = useState(0.8);
+    const [sharpness, setSharpness] = useState(0.5);
+    const intensityShared = useSharedValue(0.8);
+    const sharpnessShared = useSharedValue(0.5);
+
+    useEffect(() => {
+        SidePocketHaptics.prepare().catch(() => {});
+        setTier(SidePocketHaptics.getCapability());
+    }, []);
 
     // ── Button 1 ────────────────────────────────────────────────────────────
     const brightness1 = useSharedValue(1);
@@ -262,9 +306,135 @@ export default function UITestingScreen() {
                             />
                         </View>
                     </View>
+
+                    {/* ── Haptics Lab ── */}
+                    <View style={styles.controls}>
+                        <View style={styles.flickerRow}>
+                            <ThemedText style={styles.sectionLabel}>
+                                Haptics Lab
+                            </ThemedText>
+                            <View style={styles.tierBadge}>
+                                <ThemedText style={styles.tierText}>
+                                    {tier ?? "…"}
+                                </ThemedText>
+                            </View>
+                        </View>
+
+                        <ThemedText style={styles.hint}>
+                            Preset taps — intensity × sharpness
+                        </ThemedText>
+                        <View style={styles.padGrid}>
+                            {TAP_PADS.map((p) => (
+                                <HapticPad
+                                    key={`${p.title}-${p.sub}`}
+                                    title={p.title}
+                                    subtitle={p.sub}
+                                    onPress={() =>
+                                        SidePocketHaptics.playTransient(
+                                            p.i,
+                                            p.s,
+                                        )
+                                    }
+                                />
+                            ))}
+                        </View>
+
+                        <NeonSlider
+                            label="Intensity"
+                            value={intensityShared}
+                            min={0}
+                            max={1}
+                            trackColors={BRIGHTNESS_GRADIENT}
+                            onJsChange={setIntensity}
+                        />
+                        <NeonSlider
+                            label="Sharpness"
+                            value={sharpnessShared}
+                            min={0}
+                            max={1}
+                            trackColors={SHARPNESS_GRADIENT}
+                            onJsChange={setSharpness}
+                        />
+
+                        <View style={styles.padGrid}>
+                            <HapticPad
+                                title="Custom"
+                                subtitle="tap"
+                                color="#2dd4ff"
+                                onPress={() =>
+                                    SidePocketHaptics.playTransient(
+                                        intensity,
+                                        sharpness,
+                                    )
+                                }
+                            />
+                            <HapticPad
+                                title="Buzz"
+                                subtitle="300ms"
+                                color="#2dd4ff"
+                                onPress={() =>
+                                    SidePocketHaptics.playContinuous(
+                                        300,
+                                        intensity,
+                                        sharpness,
+                                    )
+                                }
+                            />
+                            <HapticPad
+                                title="Sizzle"
+                                subtitle="ripple"
+                                color="#39ff14"
+                                onPress={() =>
+                                    SidePocketHaptics.playCurve(
+                                        700,
+                                        sizzleEnvelope(),
+                                        sharpness,
+                                    )
+                                }
+                            />
+                            <HapticPad
+                                title="Stop"
+                                subtitle="cancel"
+                                color="#ff2d2d"
+                                onPress={() => SidePocketHaptics.stop()}
+                            />
+                        </View>
+                    </View>
                 </View>
             </ScrollView>
         </NeonRenderer>
+    );
+}
+
+// ── Haptic pad ────────────────────────────────────────────────────────────────
+
+function HapticPad({
+    title,
+    subtitle,
+    color = "#ff2d2d",
+    onPress,
+}: {
+    title: string;
+    subtitle?: string;
+    color?: string;
+    onPress: () => void;
+}) {
+    return (
+        <Pressable
+            onPress={onPress}
+            style={({ pressed }) => [
+                styles.pad,
+                {
+                    borderColor: color,
+                    backgroundColor: pressed ? `${color}33` : "#00000066",
+                },
+            ]}
+        >
+            <ThemedText style={styles.padTitle}>{title}</ThemedText>
+            {subtitle ? (
+                <ThemedText style={styles.padSub}>{subtitle}</ThemedText>
+            ) : null}
+        </Pressable>
     );
 }
 
@@ -314,5 +484,49 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "space-between",
         paddingTop: Spacing.two,
+    },
+    hint: {
+        color: "#888888",
+        fontSize: 12,
+    },
+    padGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: Spacing.two,
+    },
+    pad: {
+        minWidth: 96,
+        flexGrow: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: Spacing.three,
+        borderRadius: 12,
+        borderWidth: 2,
+    },
+    padTitle: {
+        color: "#ffffff",
+        fontSize: 15,
+        fontWeight: "700",
+    },
+    padSub: {
+        color: "#aaaaaa",
+        fontSize: 11,
+        textTransform: "uppercase",
+        letterSpacing: 1,
+    },
+    tierBadge: {
+        paddingHorizontal: Spacing.three,
+        paddingVertical: Spacing.one,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: "#39ff14",
+        backgroundColor: "#39ff1418",
+    },
+    tierText: {
+        color: "#39ff14",
+        fontSize: 13,
+        fontWeight: "700",
+        textTransform: "uppercase",
+        letterSpacing: 1,
     },
 });
