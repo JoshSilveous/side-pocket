@@ -27,6 +27,7 @@ import { ColdTubes } from "./ColdTubes";
 import { PathLight } from "./PathLight";
 import { PathTube } from "./PathTube";
 import { lightenHex, scaledSkPath, scaleMatrix } from "./utils";
+import SidePocketHaptics from "../../../modules/side-pocket-haptics";
 
 // ════════════════════════════════════════════════════════════════════════════
 //  CONFIG — tweak the sign here.
@@ -166,6 +167,26 @@ function rippleJitter(i: number, seed: number): number {
     return x - Math.floor(x);
 }
 
+// ── Tap ripple haptic — subtle "sizzle" as a tapped ripple flushes back on ──
+const TAP_HAPTIC_MS = 650;
+const TAP_HAPTIC_SHARPNESS = 0.3; // soft, matches the splash sizzle
+const TAP_HAPTIC_PEAK = 0.5; // intensity ceiling
+
+/** Envelope for a single tap: a touch tick, a quiet dwell while the ripple's OFF
+ *  wave passes, then a soft swell as the tubes glitch back on. */
+function tapSizzleEnvelope(steps = 22): number[] {
+    const bump = (t: number, c: number, w: number) =>
+        Math.exp(-((t - c) ** 2) / (2 * w * w));
+    const out: number[] = [];
+    for (let k = 0; k < steps; k++) {
+        const t = steps === 1 ? 0 : k / (steps - 1);
+        const tick = 0.4 * bump(t, 0, 0.05); // the touch
+        const swell = 0.45 * bump(t, 0.7, 0.16); // glitch-on flush
+        out.push(Math.min(TAP_HAPTIC_PEAK, Math.max(0, tick + swell)));
+    }
+    return out;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 
 const PAD = 32; // glow padding around the sign (px)
@@ -191,6 +212,8 @@ type Props = {
     autoPlay?: boolean;
     /** Tap the sign to replay the power-on animation. Default: true. */
     tapToReplay?: boolean;
+    /** Fire a haptic sizzle when the sign is tapped. Default: true. */
+    haptics?: boolean;
     style?: StyleProp<ViewStyle>;
 };
 
@@ -206,7 +229,14 @@ type Props = {
  */
 export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
     function SidePocketNeon(
-        { width, tubeWidth = 4, autoPlay = true, tapToReplay = true, style },
+        {
+            width,
+            tubeWidth = 4,
+            autoPlay = true,
+            tapToReplay = true,
+            haptics = true,
+            style,
+        },
         ref,
     ) {
         const renderer = useNeonRenderer();
@@ -461,12 +491,19 @@ export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
                 const cy = localY - PAD;
                 for (const hp of hitPaths) {
                     if (hp.contains(cx, cy)) {
+                        if (haptics) {
+                            SidePocketHaptics.playCurve(
+                                TAP_HAPTIC_MS,
+                                tapSizzleEnvelope(),
+                                TAP_HAPTIC_SHARPNESS,
+                            );
+                        }
                         powerOnFrom(cx, cy);
                         return;
                     }
                 }
             },
-            [hitPaths, powerOnFrom],
+            [hitPaths, powerOnFrom, haptics],
         );
 
         useImperativeHandle(
@@ -484,6 +521,11 @@ export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
                 brightness.forEach((sv) => cancelAnimation(sv));
             };
         }, [autoPlay, powerOn, setBrightness, brightness, clearRestarts]);
+
+        // Warm the haptic engine so the first tap sizzle has no cold-start latency.
+        useEffect(() => {
+            if (haptics) SidePocketHaptics.prepare().catch(() => {});
+        }, [haptics]);
 
         // Measure the sign's position so each tube's light emitters land on its
         // tubes. rendererRef avoids a re-register loop (the renderer context object

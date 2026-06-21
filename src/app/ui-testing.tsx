@@ -70,15 +70,25 @@ const TAP_PADS: { title: string; sub: string; i: number; s: number }[] = [
     { title: "Hard", sub: "crisp", i: 1, s: 1 },
 ];
 
-/** A ripple-style "sizzle" envelope: fast attack, wobbling sustain, smooth decay. */
+// ── Sizzle feel — tune these on a Metro reload (no native rebuild) ──
+const SIZZLE_MS = 1300;
+const SIZZLE_SHARPNESS = 0.3; // low = soft/round, high = crisp/harsh (chalkboard)
+const SIZZLE_PEAK = 0.65; // intensity ceiling — keeps it a shimmer, not a full buzz
+const SIZZLE_WOBBLE_DEPTH = 0.12; // how much the sizzle pulses (was 0.3 = grainy)
+const SIZZLE_WOBBLE_CYCLES = 9; // pulse speed (was 20 = fast/scratchy)
+
+/** A ripple-style "sizzle" envelope: soft attack, gentle shimmer, smooth decay. */
 function sizzleEnvelope(steps = 28): number[] {
     const out: number[] = [];
     for (let k = 0; k < steps; k++) {
         const t = steps === 1 ? 0 : k / (steps - 1);
-        const attack = Math.min(1, t / 0.12);
-        const decay = 1 - Math.max(0, (t - 0.55) / 0.45);
-        const wobble = 0.7 + 0.3 * Math.sin(t * Math.PI * 20); // the sizzle crackle
-        out.push(Math.max(0, attack * decay * wobble));
+        const attack = Math.min(1, t / 0.2); // ease in
+        const decay = 1 - Math.max(0, (t - 0.4) / 0.6); // long, smooth tail
+        const wobble =
+            1 -
+            SIZZLE_WOBBLE_DEPTH +
+            SIZZLE_WOBBLE_DEPTH * Math.sin(t * Math.PI * SIZZLE_WOBBLE_CYCLES);
+        out.push(Math.max(0, SIZZLE_PEAK * attack * decay * wobble));
     }
     return out;
 }
@@ -386,9 +396,9 @@ export default function UITestingScreen() {
                                 color="#39ff14"
                                 onPress={() =>
                                     SidePocketHaptics.playCurve(
-                                        700,
+                                        SIZZLE_MS,
                                         sizzleEnvelope(),
-                                        sharpness,
+                                        SIZZLE_SHARPNESS,
                                     )
                                 }
                             />
