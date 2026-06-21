@@ -14,6 +14,11 @@ import Animated, {
     useSharedValue,
 } from "react-native-reanimated";
 
+/** Brightness at which the white "burn-out" overdrive layer is fully blown in.
+ *  Brightness 1 = normal full glow; values from 1 → OVERDRIVE_MAX fade in an
+ *  overexposed white bloom on top (driven by press / flicker animations). */
+const OVERDRIVE_MAX = 2;
+
 export type NeonTubeProps = {
     path: string;
     width: number;
@@ -62,6 +67,13 @@ export function NeonTube({
     const canvasAnimatedStyle = useAnimatedStyle(() => {
         const b = Math.max(0, Math.min(1, activeBrightness.value));
         return { opacity: Math.pow(b, 0.7) };
+    });
+
+    // Overdrive (>1 brightness): a white blow-out bloom that fades in as the tube
+    // is pushed past full, reading as "about to burn out".
+    const overdriveStyle = useAnimatedStyle(() => {
+        const o = (activeBrightness.value - 1) / (OVERDRIVE_MAX - 1);
+        return { opacity: Math.max(0, Math.min(1, o)) };
     });
 
     const canvasWidth = width + glowPadding * 2;
@@ -171,6 +183,32 @@ export function NeonTube({
                         strokeJoin="round"
                     />
 
+                </Group>
+            </Canvas>
+        </Animated.View>
+
+        {/* ── Overdrive layer: white blow-out that fades in past 100% brightness ── */}
+        <Animated.View
+            pointerEvents="none"
+            style={[
+                { ...tubePosStyle, backgroundColor: "transparent" },
+                overdriveStyle,
+            ]}
+        >
+            <Canvas style={[StyleSheet.absoluteFill, { backgroundColor: "transparent" }]}>
+                <Group transform={[{ translateX: glowPadding }, { translateY: glowPadding }]}>
+                    {/* Wide overexposed white bloom */}
+                    <Path path={skPath} color="transparent">
+                        <Paint color="#ffffff" style="stroke" strokeWidth={tubeWidth * 0.8}>
+                            <BlurMask blur={bloomBlur * 1.6} style="outer" />
+                        </Paint>
+                    </Path>
+                    {/* Fattened white body so the tube itself looks blown out */}
+                    <Path path={skPath} color="transparent">
+                        <Paint color="#ffffff" style="stroke" strokeWidth={tubeWidth * 0.7}>
+                            <BlurMask blur={haloBlur} style="normal" />
+                        </Paint>
+                    </Path>
                 </Group>
             </Canvas>
         </Animated.View>

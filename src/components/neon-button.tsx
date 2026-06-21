@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet } from "react-native";
-import { SharedValue, useSharedValue } from "react-native-reanimated";
+import {
+    cancelAnimation,
+    SharedValue,
+    useDerivedValue,
+    useSharedValue,
+    withRepeat,
+    withSequence,
+    withTiming,
+} from "react-native-reanimated";
 
 import { NeonText } from "./neon-text";
 import { NeonTube } from "./neon-tube";
@@ -39,6 +47,9 @@ const HOLD_SHARPNESS = 0.3; // low buzz while held
 const RELEASE_INTENSITY = 1;
 const RELEASE_SHARPNESS = 0.15; // hard + dull
 
+// ── Press visual — overdrive past 100% + burn-out flicker while held ──
+const PRESS_OVERDRIVE = 1.7; // brightness multiplier peak while held
+
 function buildRoundedRectPath(w: number, h: number, r: number): string {
     return (
         `M ${r} 0 H ${w - r} ` +
@@ -74,6 +85,13 @@ export default function NeonButton(props: {
     const internalBrightness = useSharedValue(BASE_BRIGHTNESS);
     const brightness = props.brightness ?? internalBrightness;
 
+    // Press boost multiplies whatever brightness we're given (so it composes with an
+    // externally-driven brightness), letting the press surge it past 100%.
+    const pressBoost = useSharedValue(1);
+    const effectiveBrightness = useDerivedValue(
+        () => brightness.value * pressBoost.value,
+    );
+
     // Warm the haptic engine so the first press has no cold-start latency, and make
     // sure a held buzz is stopped if the button unmounts mid-press.
     useEffect(() => {
@@ -91,6 +109,19 @@ export default function NeonButton(props: {
         <Pressable
             onPress={onPress}
             onPressIn={() => {
+                // Visual: surge past full, then flicker like it's about to burn out.
+                cancelAnimation(pressBoost);
+                pressBoost.value = withRepeat(
+                    withSequence(
+                        withTiming(PRESS_OVERDRIVE, { duration: 55 }),
+                        withTiming(1.25, { duration: 45 }),
+                        withTiming(PRESS_OVERDRIVE - 0.1, { duration: 40 }),
+                        withTiming(0.8, { duration: 35 }), // quick flicker blink
+                        withTiming(1.5, { duration: 60 }),
+                    ),
+                    -1,
+                    false,
+                );
                 if (!haptics) return;
                 // Crisp tap down, then the low buzz that lasts while held.
                 SidePocketHaptics.playTransient(
@@ -103,6 +134,9 @@ export default function NeonButton(props: {
                 );
             }}
             onPressOut={() => {
+                // Settle the glow back to its resting brightness.
+                cancelAnimation(pressBoost);
+                pressBoost.value = withTiming(1, { duration: 180 });
                 if (!haptics) return;
                 // Stop the hold buzz, then a dull thud on release.
                 SidePocketHaptics.stopContinuous();
@@ -115,7 +149,7 @@ export default function NeonButton(props: {
                 const { width, height } = e.nativeEvent.layout;
                 setSize({ width, height });
             }}
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+            style={styles.button}
         >
             {size.width > 0 && (
                 <NeonTube
@@ -126,7 +160,7 @@ export default function NeonButton(props: {
                     warmColor={warmColor}
                     tubeWidth={TUBE_WIDTH}
                     glow={GLOW}
-                    brightness={brightness}
+                    brightness={effectiveBrightness}
                     innerGlow={false}
                     glowPadding={GLOW_PADDING}
                 />
@@ -152,8 +186,5 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         paddingHorizontal: PADDING_H,
         paddingVertical: PADDING_V,
-    },
-    pressed: {
-        opacity: 0.7,
     },
 });
