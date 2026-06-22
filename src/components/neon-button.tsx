@@ -202,7 +202,7 @@ export default function NeonButton(props: {
                 color={color}
                 warmColor={warmColor}
                 glow={GLOW}
-                brightness={brightness}
+                brightness={effectiveBrightness}
             >
                 {children}
             </NeonText>

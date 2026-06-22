@@ -40,6 +40,10 @@ const HOT_BLUR = 0.03;
 /** Faint grey so the label stays legible even when unlit (brightness 0). */
 const COLD_TEXT_COLOR = "#6a6a72";
 
+/** Brightness at which the colour overdrive (extra glow past 100%) is fully blown
+ *  in. Keep in sync with neon-tube's OVERDRIVE_MAX. */
+const OVERDRIVE_MAX = 2;
+
 /** Max emitter points fed to the lighting pass for the whole string. Small: the
  *  dust worklet loops every emitter of every light per particle (640x). */
 const MAX_TEXT_EMITTERS = 10;
@@ -187,7 +191,9 @@ export function NeonText({
                     r: lp.r,
                     g: lp.g,
                     b: lp.b,
-                    intensity: bv.value,
+                    // Visual glow can overdrive past 1, but the emitted wall/dust
+                    // light must stay 0..1 — the shader/colour buffers abort on >1.
+                    intensity: Math.min(1, bv.value),
                 });
             });
         });
@@ -212,7 +218,9 @@ export function NeonText({
             "worklet";
             if (!intensityShared) return;
             const next = Object.assign({}, intensityShared.value);
-            next[id] = v;
+            // Clamp the emitted light to 0..1 — overdrive (>1) is visual-only; the
+            // shader/colour buffers abort on out-of-range intensity.
+            next[id] = v > 1 ? 1 : v < 0 ? 0 : v;
             intensityShared.value = next;
         },
         [id, intensityShared],
@@ -229,6 +237,13 @@ export function NeonText({
     const canvasAnimatedStyle = useAnimatedStyle(() => {
         const b = Math.max(0, Math.min(1, bv.value));
         return { opacity: Math.pow(b, 0.7) };
+    });
+
+    // Overdrive (>1 brightness): extra glow in the text's own colour that fades in as
+    // it's pushed past full — mirrors the tube's overdrive so the label burns brighter.
+    const overdriveStyle = useAnimatedStyle(() => {
+        const o = (bv.value - 1) / (OVERDRIVE_MAX - 1);
+        return { opacity: Math.max(0, Math.min(1, o)) };
     });
 
     if (!font || !layout) {
@@ -353,6 +368,64 @@ export function NeonText({
                         </SkiaText>
 
                         {/* Hot core — the crisp glyphs themselves (no blur) */}
+                        <SkiaText
+                            font={font}
+                            text={text}
+                            x={drawX}
+                            y={drawY}
+                            color={coreColor}
+                        />
+                    </Group>
+                </Canvas>
+            </Animated.View>
+
+            {/* ── Overdrive layer: extra glow in the text's OWN colour, fading in past
+                  100% brightness (no white blow-out). Pushed hard — the letters are
+                  already white-cored, so the colour glow has to stack to read. ── */}
+            <Animated.View
+                pointerEvents="none"
+                style={[canvasStyle, overdriveStyle]}
+            >
+                <Canvas
+                    style={[
+                        StyleSheet.absoluteFill,
+                        { backgroundColor: "transparent" },
+                    ]}
+                >
+                    <Group>
+                        {/* Wide colour bloom — increases the glow AROUND the letters. */}
+                        <SkiaText
+                            font={font}
+                            text={text}
+                            x={drawX}
+                            y={drawY}
+                            color={color}
+                        >
+                            <BlurMask blur={bloomBlur * 1.8} style="normal" />
+                        </SkiaText>
+                        <SkiaText
+                            font={font}
+                            text={text}
+                            x={drawX}
+                            y={drawY}
+                            color={color}
+                        >
+                            <BlurMask blur={bloomBlur * 1.2} style="normal" />
+                        </SkiaText>
+
+                        {/* Re-assert the white-hot core ON TOP of this layer's bloom so
+                            the glyphs stay white instead of getting tinted by the
+                            colour bloom drawn over them. */}
+                        <SkiaText
+                            font={font}
+                            text={text}
+                            x={drawX}
+                            y={drawY}
+                            color={coreColor}
+                            opacity={0.85}
+                        >
+                            <BlurMask blur={hotBlur} style="normal" />
+                        </SkiaText>
                         <SkiaText
                             font={font}
                             text={text}
