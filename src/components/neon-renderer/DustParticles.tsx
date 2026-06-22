@@ -219,10 +219,15 @@ export function DustParticles({
                 const d2 = dx * dx + dy * dy;
                 if (d2 < minD2) minD2 = d2;
             }
-            const c = 1 - Math.sqrt(minD2) / DUST_REACH; // closeness 0..1
-            if (c <= 0) continue;
-
             const intensity = intens[l.id] ?? l.intensity;
+            // Overdrive (>1) lets dust light up from further out (reach grows with
+            // power), matching the wall's extended falloff.
+            const reach =
+                intensity <= 1
+                    ? DUST_REACH
+                    : DUST_REACH * (1 + (intensity - 1) * 0.4);
+            const c = 1 - Math.sqrt(minD2) / reach; // closeness 0..1
+            if (c <= 0) continue;
             // Spatial falloff: flat <0.5, ramp to CURVE_MID by 0.9, spike to 1 at the tube.
             const shape = CURVE_MID * ss(0.5, 0.9, c) + (1 - CURVE_MID) * ss(0.95, 1.0, c);
             const amt = shape * intensity;

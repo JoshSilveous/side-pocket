@@ -24,6 +24,12 @@ const BRICK_EMITTERS_PER_LIGHT = 4;
 /** Per-emitter falloff reach (px). Extended range for a more dramatic glow. */
 const BRICK_REACH = 500;
 /**
+ * How much overdrive (power > 1) extends the wall reach. radius grows as
+ * BRICK_REACH * (1 + (power - 1) * this), so a cranked tube throws light further
+ * across the wall — the whole falloff stretches, not just the bright core.
+ */
+const BRICK_OVERDRIVE_REACH = 0.4;
+/**
  * Extra damping for low-emitter (per-path neon sign) lights. A dense sign stacks
  * ~30 lights on the wall, which sum up and read too bright even at 1x each, so we
  * scale those down. Buttons (which use the full BRICK_EMITTERS_PER_LIGHT) are
@@ -222,15 +228,21 @@ export function BrickBackground({
             const boost = Math.min(3, take);
             const densityGain =
                 take >= BRICK_EMITTERS_PER_LIGHT ? 1 : SIGN_WALL_GAIN;
-            const intensity =
-                ((intens[l.id] ?? l.intensity) / take) * boost * densityGain;
+            const power = intens[l.id] ?? l.intensity; // raw power, can exceed 1
+            const intensity = (power / take) * boost * densityGain;
+            // Overdrive (>1) stretches the falloff outward so the whole reach
+            // brightens, not just the core.
+            const radius =
+                power <= 1
+                    ? BRICK_REACH
+                    : BRICK_REACH * (1 + (power - 1) * BRICK_OVERDRIVE_REACH);
 
             for (let s = 0; s < take && count < MAX_EMITTERS; s++) {
                 const idx = Math.floor(s * stride) * 2;
                 const o = count * 4;
                 emitters[o] = em[idx];
                 emitters[o + 1] = em[idx + 1] - scroll;
-                emitters[o + 2] = BRICK_REACH;
+                emitters[o + 2] = radius;
                 emitters[o + 3] = intensity;
                 emitterColors[o] = l.r;
                 emitterColors[o + 1] = l.g;

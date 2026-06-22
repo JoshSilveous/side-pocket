@@ -48,7 +48,8 @@ const RELEASE_INTENSITY = 1;
 const RELEASE_SHARPNESS = 0.15; // hard + dull
 
 // ── Press visual — overdrive past 100% + burn-out flicker while held ──
-const PRESS_OVERDRIVE = 2.7; // brightness multiplier peak while held
+const PRESS_OVERDRIVE = 1.5; // brief tap-down surge peak (punchy)
+const HOLD_OVERDRIVE = 1.2; // sustained hold-flicker peak (gentler than the tap)
 const HOLD_THRESHOLD_MS = 180; // held longer than this = "hold"; shorter = a tap
 
 function buildRoundedRectPath(w: number, h: number, r: number): string {
@@ -142,11 +143,11 @@ export default function NeonButton(props: {
                     }
                     pressBoost.value = withRepeat(
                         withSequence(
-                            withTiming(PRESS_OVERDRIVE, { duration: 55 }),
-                            withTiming(1.25, { duration: 45 }),
-                            withTiming(PRESS_OVERDRIVE - 0.1, { duration: 40 }),
-                            withTiming(0.8, { duration: 35 }), // flicker blink
-                            withTiming(1.5, { duration: 60 }),
+                            withTiming(HOLD_OVERDRIVE, { duration: 55 }),
+                            withTiming(1.15, { duration: 45 }),
+                            withTiming(HOLD_OVERDRIVE - 0.1, { duration: 40 }),
+                            withTiming(0.85, { duration: 35 }), // flicker blink
+                            withTiming(1.3, { duration: 60 }),
                         ),
                         -1,
                         false,

@@ -110,6 +110,13 @@ export function NeonText({
         if (typeof brightness === "number") staticB.value = brightness;
     }, [brightness, staticB]);
 
+    // Canvas padding must contain the bloom at MAX overdrive, or the enlarged glow
+    // gets clipped at the canvas edge. Sized to the worst-case outer bloom radius.
+    const pad = Math.max(
+        glowPadding,
+        fontSize * BLOOM_BLUR * BLOOM_REACH_MAX * 1.25,
+    );
+
     // ── Layout: advance width + vertical metrics → baseline + canvas size ──
     const layout = useMemo(() => {
         if (!font) return null;
@@ -124,8 +131,8 @@ export function NeonText({
         // and overflows via negative offset (like <NeonTube>) so glowPadding never
         // inflates layout height. drawX/drawY place the glyphs inside that bigger
         // canvas so the ink lands at the View's top-left (0,0).
-        const drawX = glowPadding;
-        const drawY = glowPadding - ascent; // ascent is negative
+        const drawX = pad;
+        const drawY = pad - ascent; // ascent is negative
         const midY = textHeight / 2; // vertical centre of ink, in View coords
 
         // Per-glyph emitter candidates in View coords (skip whitespace — no ink).
@@ -154,11 +161,11 @@ export function NeonText({
             drawY,
             width: advance, // View = natural text size (no glow padding)
             height: textHeight,
-            canvasWidth: advance + glowPadding * 2,
-            canvasHeight: textHeight + glowPadding * 2,
+            canvasWidth: advance + pad * 2,
+            canvasHeight: textHeight + pad * 2,
             localEmitters,
         };
-    }, [font, text, glowPadding]);
+    }, [font, text, pad]);
 
     // ── Light registration (brick + dust react to the text) ──
     const [lr, lg, lb] = hexToRgb01(color);
@@ -245,7 +252,7 @@ export function NeonText({
     // versions are computed after the return.
     const reach = useDerivedValue(() => {
         const b = bv.value;
-        return b < 0 ? 0 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
+        return b < 1 ? 1 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
     });
     const bloomBlurV = useDerivedValue(
         () => fontSize * BLOOM_BLUR * glow * reach.value,
@@ -265,8 +272,8 @@ export function NeonText({
     // bloom overflows without affecting layout (same trick as <NeonTube>).
     const canvasStyle = {
         position: "absolute" as const,
-        left: -glowPadding,
-        top: -glowPadding,
+        left: -pad,
+        top: -pad,
         width: canvasWidth,
         height: canvasHeight,
         backgroundColor: "transparent",

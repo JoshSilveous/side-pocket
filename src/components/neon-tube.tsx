@@ -75,9 +75,6 @@ export function NeonTube({
         return { opacity: Math.pow(b, 0.7) };
     });
 
-    const canvasWidth = width + glowPadding * 2;
-    const canvasHeight = height + glowPadding * 2;
-
     // Blur radii proportional to tube thickness (same recipe as <NeonSVG>), then
     // scaled by `glow`. Keeps the glow tight on thin tubes and matches the splash.
     const bloomBlur = tubeWidth * 3.5 * glow;
@@ -86,21 +83,27 @@ export function NeonTube({
     const warmBlur = tubeWidth * 0.25 * glow;
     const hotBlur = tubeWidth * 0.15 * glow;
 
-    // Bloom + halo reach scale with brightness (the "power"): dim = tight, bright =
-    // wide, overdriven (>1) = pushed past the rated spread. Driven on the UI thread
-    // so it tracks flicker/press without React renders. Tighter core passes
-    // (body/warm/hot) stay fixed so the glyph/tube centre stays crisp.
+    // Canvas padding must contain the bloom at MAX overdrive, or the enlarged glow
+    // gets clipped at the canvas edge. Sized to the worst-case outer bloom radius.
+    const pad = Math.max(glowPadding, bloomBlur * BLOOM_REACH_MAX * 1.25);
+    const canvasWidth = width + pad * 2;
+    const canvasHeight = height + pad * 2;
+
+    // Bloom + halo reach scale with brightness (the "power") past 100%: rated below
+    // 1 (kept = base so the splash power-on is unchanged), pushed wider as it's
+    // overdriven. UI thread so it tracks flicker/press without React renders. Tighter
+    // core passes (body/warm/hot) stay fixed so the tube centre stays crisp.
     const reach = useDerivedValue(() => {
         const b = activeBrightness.value;
-        return b < 0 ? 0 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
+        return b < 1 ? 1 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
     });
     const bloomBlurV = useDerivedValue(() => bloomBlur * reach.value);
     const haloBlurV = useDerivedValue(() => haloBlur * reach.value);
 
     const tubePosStyle = {
         position: "absolute" as const,
-        top: -glowPadding,
-        left: -glowPadding,
+        top: -pad,
+        left: -pad,
         width: canvasWidth,
         height: canvasHeight,
     };
@@ -118,8 +121,8 @@ export function NeonTube({
                 >
                     <Group
                         transform={[
-                            { translateX: glowPadding },
-                            { translateY: glowPadding },
+                            { translateX: pad },
+                            { translateY: pad },
                         ]}
                     >
                         <Path path={skPath} color="transparent">
@@ -155,8 +158,8 @@ export function NeonTube({
                 >
                     <Group
                         transform={[
-                            { translateX: glowPadding },
-                            { translateY: glowPadding },
+                            { translateX: pad },
+                            { translateY: pad },
                         ]}
                     >
                         {innerGlow && (

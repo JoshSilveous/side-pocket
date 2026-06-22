@@ -95,7 +95,7 @@ export function PathTube({
     // overdriven past 100%. UI thread, so it tracks the power-on / flicker live.
     const reach = useDerivedValue(() => {
         const b = bv.value;
-        return b < 0 ? 0 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
+        return b < 1 ? 1 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
     });
     const bloomBlurV = useDerivedValue(() => bloomBlur * reach.value);
     const haloBlurV = useDerivedValue(() => haloBlur * reach.value);

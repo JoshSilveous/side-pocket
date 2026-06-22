@@ -256,7 +256,7 @@ export function NeonSVG({
     // overdriven past 100%. UI thread, tracks flicker/power live.
     const reach = useDerivedValue(() => {
         const b = bv.value;
-        return b < 0 ? 0 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
+        return b < 1 ? 1 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
     });
     const bloomBlurV = useDerivedValue(() => tubeWidth * 3.5 * reach.value);
     const haloBlurV = useDerivedValue(() => tubeWidth * 1.4 * reach.value);
