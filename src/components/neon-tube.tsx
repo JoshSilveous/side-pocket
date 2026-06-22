@@ -11,13 +11,18 @@ import { StyleSheet, View } from "react-native";
 import Animated, {
     SharedValue,
     useAnimatedStyle,
+    useDerivedValue,
     useSharedValue,
 } from "react-native-reanimated";
 
-/** Brightness at which the white "burn-out" overdrive layer is fully blown in.
- *  Brightness 1 = normal full glow; values from 1 → OVERDRIVE_MAX fade in an
- *  overexposed white bloom on top (driven by press / flicker animations). */
-const OVERDRIVE_MAX = 3;
+/**
+ * `brightness` behaves like power to a real neon tube:
+ *   0   = off (no glow, just the cold glass)
+ *   1   = rated / normal full glow
+ *   >1  = overdriven — the bloom reaches further, like it's being pushed past spec
+ * Bloom reach scales linearly with brightness up to this cap (keeps blur sane).
+ */
+const BLOOM_REACH_MAX = 3;
 
 export type NeonTubeProps = {
     path: string;
@@ -63,16 +68,11 @@ export function NeonTube({
         return parsed ?? Skia.Path.Make();
     }, [pathStr]);
 
+    // Opacity carries the 0→100% fade-in (off → fully lit). Past 100% it stays
+    // pinned at 1 — the "overdriven" look comes from bloom reach below, not alpha.
     const canvasAnimatedStyle = useAnimatedStyle(() => {
         const b = Math.max(0, Math.min(1, activeBrightness.value));
         return { opacity: Math.pow(b, 0.7) };
-    });
-
-    // Overdrive (>1 brightness): a white blow-out bloom that fades in as the tube
-    // is pushed past full, reading as "about to burn out".
-    const overdriveStyle = useAnimatedStyle(() => {
-        const o = (activeBrightness.value - 1) / (OVERDRIVE_MAX - 1);
-        return { opacity: Math.max(0, Math.min(1, o)) };
     });
 
     const canvasWidth = width + glowPadding * 2;
@@ -85,6 +85,17 @@ export function NeonTube({
     const bodyBlur = tubeWidth * 0.3 * glow;
     const warmBlur = tubeWidth * 0.25 * glow;
     const hotBlur = tubeWidth * 0.15 * glow;
+
+    // Bloom + halo reach scale with brightness (the "power"): dim = tight, bright =
+    // wide, overdriven (>1) = pushed past the rated spread. Driven on the UI thread
+    // so it tracks flicker/press without React renders. Tighter core passes
+    // (body/warm/hot) stay fixed so the glyph/tube centre stays crisp.
+    const reach = useDerivedValue(() => {
+        const b = activeBrightness.value;
+        return b < 0 ? 0 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
+    });
+    const bloomBlurV = useDerivedValue(() => bloomBlur * reach.value);
+    const haloBlurV = useDerivedValue(() => haloBlur * reach.value);
 
     const tubePosStyle = {
         position: "absolute" as const,
@@ -127,7 +138,8 @@ export function NeonTube({
                 </Canvas>
             </View>
 
-            {/* ── Animated glow layers: fade with brightness ── */}
+            {/* ── Animated glow layers: opacity fades 0→100%, bloom reach scales with
+                  brightness (incl. overdrive past 100%) ── */}
             <Animated.View
                 pointerEvents="none"
                 style={[
@@ -165,14 +177,14 @@ export function NeonTube({
                             </Path>
                         )}
 
-                        {/* Outer bloom x2 */}
+                        {/* Outer bloom x2 — reach scales with brightness */}
                         <Path path={skPath} color="transparent">
                             <Paint
                                 color={color}
                                 style="stroke"
                                 strokeWidth={tubeWidth * 0.3}
                             >
-                                <BlurMask blur={bloomBlur} style="outer" />
+                                <BlurMask blur={bloomBlurV} style="outer" />
                             </Paint>
                         </Path>
                         <Path path={skPath} color="transparent">
@@ -181,18 +193,18 @@ export function NeonTube({
                                 style="stroke"
                                 strokeWidth={tubeWidth * 0.3}
                             >
-                                <BlurMask blur={bloomBlur} style="outer" />
+                                <BlurMask blur={bloomBlurV} style="outer" />
                             </Paint>
                         </Path>
 
-                        {/* Mid halo */}
+                        {/* Mid halo — reach scales with brightness */}
                         <Path path={skPath} color="transparent">
                             <Paint
                                 color={color}
                                 style="stroke"
                                 strokeWidth={tubeWidth * 0.7}
                             >
-                                <BlurMask blur={haloBlur} style="outer" />
+                                <BlurMask blur={haloBlurV} style="outer" />
                             </Paint>
                         </Path>
 
@@ -238,54 +250,6 @@ export function NeonTube({
                             strokeCap="round"
                             strokeJoin="round"
                         />
-                    </Group>
-                </Canvas>
-            </Animated.View>
-
-            {/* ── Overdrive layer: extra glow in the tube's OWN colour that fades in past
-              100% brightness — intensifies the existing glow, no white blow-out. ── */}
-            <Animated.View
-                pointerEvents="none"
-                style={[
-                    { ...tubePosStyle, backgroundColor: "transparent" },
-                    overdriveStyle,
-                ]}
-            >
-                <Canvas
-                    style={[
-                        StyleSheet.absoluteFill,
-                        { backgroundColor: "transparent" },
-                    ]}
-                >
-                    <Group
-                        transform={[
-                            { translateX: glowPadding },
-                            { translateY: glowPadding },
-                        ]}
-                    >
-                        {/* Extra wide bloom in the tube's colour */}
-                        <Path path={skPath} color="transparent">
-                            <Paint
-                                color={color}
-                                style="stroke"
-                                strokeWidth={tubeWidth * 0.5}
-                            >
-                                <BlurMask
-                                    blur={bloomBlur * 1.6}
-                                    style="outer"
-                                />
-                            </Paint>
-                        </Path>
-                        {/* Extra mid halo in the tube's colour */}
-                        <Path path={skPath} color="transparent">
-                            <Paint
-                                color={color}
-                                style="stroke"
-                                strokeWidth={tubeWidth}
-                            >
-                                <BlurMask blur={haloBlur} style="outer" />
-                            </Paint>
-                        </Path>
                     </Group>
                 </Canvas>
             </Animated.View>

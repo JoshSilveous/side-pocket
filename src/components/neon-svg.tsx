@@ -12,10 +12,15 @@ import Animated, {
     SharedValue,
     useAnimatedReaction,
     useAnimatedStyle,
+    useDerivedValue,
     useSharedValue,
 } from "react-native-reanimated";
 
 import { useNeonRenderer } from "./neon-renderer/NeonRendererContext";
+
+/** Bloom reach multiplier cap — brightness drives bloom blur up to this (overdrive
+ *  past 100% = wider reach). Keep in sync with neon-tube's BLOOM_REACH_MAX. */
+const BLOOM_REACH_MAX = 3;
 
 export type NeonSVGProps = {
     /**
@@ -240,18 +245,27 @@ export function NeonSVG({
     }, []);
 
     // ── Visual glow ───────────────────────────────────────────────────────────
+    // Opacity carries the 0→100% fade; bloom reach (below) carries intensity past
+    // 100%, so brightness reads like power to the tube.
     const canvasAnimatedStyle = useAnimatedStyle(() => {
         const b = Math.max(0, Math.min(1, bv.value));
         return { opacity: Math.pow(b, 0.7) };
     });
 
+    // Bloom + halo reach scale with brightness (the "power"): off → tight → wide →
+    // overdriven past 100%. UI thread, tracks flicker/power live.
+    const reach = useDerivedValue(() => {
+        const b = bv.value;
+        return b < 0 ? 0 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
+    });
+    const bloomBlurV = useDerivedValue(() => tubeWidth * 3.5 * reach.value);
+    const haloBlurV = useDerivedValue(() => tubeWidth * 1.4 * reach.value);
+
     const canvasWidth = width + glowPadding * 2;
     const canvasHeight = height + glowPadding * 2;
     const posStyle = { width: canvasWidth, height: canvasHeight };
 
-    // Blur radii proportional to tube thickness — tight glow for thin/dense art.
-    const bloomBlur = tubeWidth * 3.5;
-    const haloBlur = tubeWidth * 1.4;
+    // bloomBlur/haloBlur are reactive (bloomBlurV/haloBlurV above); these stay fixed.
     const bodyBlur = tubeWidth * 0.3;
     const warmBlur = tubeWidth * 0.25;
     const hotBlur = tubeWidth * 0.15;
@@ -331,7 +345,7 @@ export function NeonSVG({
                                 style="stroke"
                                 strokeWidth={tubeWidth * 0.3}
                             >
-                                <BlurMask blur={bloomBlur} style="outer" />
+                                <BlurMask blur={bloomBlurV} style="outer" />
                             </Paint>
                         </Path>
                         <Path path={skPath} color="transparent">
@@ -340,7 +354,7 @@ export function NeonSVG({
                                 style="stroke"
                                 strokeWidth={tubeWidth * 0.3}
                             >
-                                <BlurMask blur={bloomBlur} style="outer" />
+                                <BlurMask blur={bloomBlurV} style="outer" />
                             </Paint>
                         </Path>
 
@@ -351,7 +365,7 @@ export function NeonSVG({
                                 style="stroke"
                                 strokeWidth={tubeWidth * 0.7}
                             >
-                                <BlurMask blur={haloBlur} style="outer" />
+                                <BlurMask blur={haloBlurV} style="outer" />
                             </Paint>
                         </Path>
 

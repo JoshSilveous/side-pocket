@@ -11,9 +11,14 @@ import { useEffect, useMemo } from "react";
 import { StyleSheet } from "react-native";
 import Animated, {
     useAnimatedStyle,
+    useDerivedValue,
     useSharedValue,
     type SharedValue,
 } from "react-native-reanimated";
+
+/** Bloom reach multiplier cap — brightness drives bloom blur up to this (overdrive
+ *  past 100% = wider reach). Keep in sync with neon-tube's BLOOM_REACH_MAX. */
+const BLOOM_REACH_MAX = 3;
 
 type Props = {
     /** Scaled path in sign-content coordinates (origin = sign top-left). */
@@ -86,6 +91,15 @@ export function PathTube({
     const warmBlur = tubeWidth * 0.25;
     const hotBlur = tubeWidth * 0.15;
 
+    // Bloom + halo reach scale with brightness (the "power"): off → tight → wide →
+    // overdriven past 100%. UI thread, so it tracks the power-on / flicker live.
+    const reach = useDerivedValue(() => {
+        const b = bv.value;
+        return b < 0 ? 0 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
+    });
+    const bloomBlurV = useDerivedValue(() => bloomBlur * reach.value);
+    const haloBlurV = useDerivedValue(() => haloBlur * reach.value);
+
     return (
         <Animated.View
             pointerEvents="none"
@@ -109,7 +123,7 @@ export function PathTube({
                             style="stroke"
                             strokeWidth={tubeWidth * 0.3}
                         >
-                            <BlurMask blur={bloomBlur} style="outer" />
+                            <BlurMask blur={bloomBlurV} style="outer" />
                         </Paint>
                     </Path>
                     <Path path={layout.local} color="transparent">
@@ -118,7 +132,7 @@ export function PathTube({
                             style="stroke"
                             strokeWidth={tubeWidth * 0.3}
                         >
-                            <BlurMask blur={bloomBlur} style="outer" />
+                            <BlurMask blur={bloomBlurV} style="outer" />
                         </Paint>
                     </Path>
 
@@ -129,7 +143,7 @@ export function PathTube({
                             style="stroke"
                             strokeWidth={tubeWidth * 0.7}
                         >
-                            <BlurMask blur={haloBlur} style="outer" />
+                            <BlurMask blur={haloBlurV} style="outer" />
                         </Paint>
                     </Path>
 

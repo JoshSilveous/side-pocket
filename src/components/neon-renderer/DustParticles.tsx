@@ -267,7 +267,11 @@ export function DustParticles({
         val[0] = fr;
         val[1] = fg;
         val[2] = fb;
-        val[3] = bestAmt > AMBIENT_OPACITY ? bestAmt : AMBIENT_OPACITY;
+        // bestAmt can exceed 1 when a tube is overdriven (>100% power), but the
+        // colour-buffer alpha must stay 0..1 (out-of-range values abort Skia). The
+        // extra power still reads — more particles cross the visibility threshold.
+        const a = bestAmt > AMBIENT_OPACITY ? bestAmt : AMBIENT_OPACITY;
+        val[3] = a > 1 ? 1 : a;
     });
 
     return (
