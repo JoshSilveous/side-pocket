@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet } from "react-native";
 import {
     cancelAnimation,
@@ -49,6 +49,7 @@ const RELEASE_SHARPNESS = 0.15; // hard + dull
 
 // ── Press visual — overdrive past 100% + burn-out flicker while held ──
 const PRESS_OVERDRIVE = 2.7; // brightness multiplier peak while held
+const HOLD_THRESHOLD_MS = 180; // held longer than this = "hold"; shorter = a tap
 
 function buildRoundedRectPath(w: number, h: number, r: number): string {
     return (
@@ -92,12 +93,18 @@ export default function NeonButton(props: {
         () => brightness.value * pressBoost.value,
     );
 
-    // Warm the haptic engine so the first press has no cold-start latency, and make
-    // sure a held buzz is stopped if the button unmounts mid-press.
+    // Distinguish a quick tap from a hold: a timer started on press-down escalates to
+    // the hold behavior only if still held past HOLD_THRESHOLD_MS.
+    const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isHolding = useRef(false);
+
+    // Warm the haptic engine; on unmount clear any pending timer + stop a held buzz.
     useEffect(() => {
-        if (!haptics) return;
-        SidePocketHaptics.prepare().catch(() => {});
-        return () => SidePocketHaptics.stopContinuous();
+        if (haptics) SidePocketHaptics.prepare().catch(() => {});
+        return () => {
+            if (holdTimer.current) clearTimeout(holdTimer.current);
+            SidePocketHaptics.stopContinuous();
+        };
     }, [haptics]);
 
     const path =
@@ -109,41 +116,64 @@ export default function NeonButton(props: {
         <Pressable
             onPress={onPress}
             onPressIn={() => {
-                // Visual: surge past full, then flicker like it's about to burn out.
+                // Tap-down: a single crisp tick + one overdrive surge. This is the
+                // whole event for a quick tap; if still held past the threshold we
+                // escalate to the hold behavior below.
                 cancelAnimation(pressBoost);
-                pressBoost.value = withRepeat(
-                    withSequence(
-                        withTiming(PRESS_OVERDRIVE, { duration: 55 }),
-                        withTiming(1.25, { duration: 45 }),
-                        withTiming(PRESS_OVERDRIVE - 0.1, { duration: 40 }),
-                        withTiming(0.8, { duration: 35 }), // quick flicker blink
-                        withTiming(1.5, { duration: 60 }),
-                    ),
-                    -1,
-                    false,
-                );
-                if (!haptics) return;
-                // Crisp tap down, then the low buzz that lasts while held.
-                SidePocketHaptics.playTransient(
-                    PRESS_INTENSITY,
-                    PRESS_SHARPNESS,
-                );
-                SidePocketHaptics.startContinuous(
-                    HOLD_INTENSITY,
-                    HOLD_SHARPNESS,
-                );
+                pressBoost.value = withTiming(PRESS_OVERDRIVE, {
+                    duration: 55,
+                });
+                if (haptics) {
+                    SidePocketHaptics.playTransient(
+                        PRESS_INTENSITY,
+                        PRESS_SHARPNESS,
+                    );
+                }
+
+                isHolding.current = false;
+                holdTimer.current = setTimeout(() => {
+                    // Held: low buzz + burn-out flicker.
+                    isHolding.current = true;
+                    if (haptics) {
+                        SidePocketHaptics.startContinuous(
+                            HOLD_INTENSITY,
+                            HOLD_SHARPNESS,
+                        );
+                    }
+                    pressBoost.value = withRepeat(
+                        withSequence(
+                            withTiming(PRESS_OVERDRIVE, { duration: 55 }),
+                            withTiming(1.25, { duration: 45 }),
+                            withTiming(PRESS_OVERDRIVE - 0.1, { duration: 40 }),
+                            withTiming(0.8, { duration: 35 }), // flicker blink
+                            withTiming(1.5, { duration: 60 }),
+                        ),
+                        -1,
+                        false,
+                    );
+                }, HOLD_THRESHOLD_MS);
             }}
             onPressOut={() => {
-                // Settle the glow back to its resting brightness.
+                if (holdTimer.current) {
+                    clearTimeout(holdTimer.current);
+                    holdTimer.current = null;
+                }
+                // Settle the glow back to resting brightness (ends the tap blip or
+                // the hold flicker).
                 cancelAnimation(pressBoost);
                 pressBoost.value = withTiming(1, { duration: 180 });
-                if (!haptics) return;
-                // Stop the hold buzz, then a dull thud on release.
-                SidePocketHaptics.stopContinuous();
-                SidePocketHaptics.playTransient(
-                    RELEASE_INTENSITY,
-                    RELEASE_SHARPNESS,
-                );
+                // Only a sustained hold gets the stop-buzz + dull release; a quick tap
+                // already fired its single tick on press-down.
+                if (isHolding.current) {
+                    isHolding.current = false;
+                    if (haptics) {
+                        SidePocketHaptics.stopContinuous();
+                        SidePocketHaptics.playTransient(
+                            RELEASE_INTENSITY,
+                            RELEASE_SHARPNESS,
+                        );
+                    }
+                }
             }}
             onLayout={(e) => {
                 const { width, height } = e.nativeEvent.layout;
