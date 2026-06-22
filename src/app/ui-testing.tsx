@@ -5,6 +5,7 @@ import {
     ScrollView,
     StyleSheet,
     Switch,
+    Text,
     View,
 } from "react-native";
 import {
@@ -20,7 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import NeonButton from "@/components/neon-button";
 import { NeonLightSource, NeonRenderer } from "@/components/neon-renderer";
 import { NeonSlider } from "@/components/neon-slider";
-import { ThemedText } from "@/components/themed-text";
+import { NeonText } from "@/components/neon-text";
 import { BottomTabInset, MaxContentWidth, Spacing } from "@/constants/theme";
 import SidePocketHaptics, {
     type HapticTier,
@@ -229,9 +230,15 @@ export default function UITestingScreen() {
                 ]}
             >
                 <View style={styles.container}>
-                    <ThemedText type="subtitle" style={styles.title}>
-                        UI Testing
-                    </ThemedText>
+                    <View style={styles.titleWrap}>
+                        <NeonText
+                            fontSize={40}
+                            color="#39ff14"
+                            warmColor="#a6ff8c"
+                        >
+                            UI Testing
+                        </NeonText>
+                    </View>
 
                     {/* ── Buttons ── */}
                     <View style={styles.buttonArea}>
@@ -266,9 +273,9 @@ export default function UITestingScreen() {
 
                     {/* ── Controls ── */}
                     <View style={styles.controls}>
-                        <ThemedText style={styles.sectionLabel}>
+                        <Text style={styles.sectionLabel}>
                             Button One
-                        </ThemedText>
+                        </Text>
                         <NeonSlider
                             label="Brightness"
                             value={brightness1}
@@ -285,9 +292,9 @@ export default function UITestingScreen() {
                             onJsChange={(v) => setHue1(Math.round(v))}
                         />
 
-                        <ThemedText style={styles.sectionLabel}>
+                        <Text style={styles.sectionLabel}>
                             Button Two
-                        </ThemedText>
+                        </Text>
                         <NeonSlider
                             label="Brightness"
                             value={brightness2}
@@ -305,9 +312,9 @@ export default function UITestingScreen() {
                         />
 
                         <View style={styles.flickerRow}>
-                            <ThemedText style={styles.sectionLabel}>
+                            <Text style={styles.sectionLabel}>
                                 Flicker
-                            </ThemedText>
+                            </Text>
                             <Switch
                                 value={flickerOn}
                                 onValueChange={setFlickerOn}
@@ -320,19 +327,19 @@ export default function UITestingScreen() {
                     {/* ── Haptics Lab ── */}
                     <View style={styles.controls}>
                         <View style={styles.flickerRow}>
-                            <ThemedText style={styles.sectionLabel}>
+                            <Text style={styles.sectionLabel}>
                                 Haptics Lab
-                            </ThemedText>
+                            </Text>
                             <View style={styles.tierBadge}>
-                                <ThemedText style={styles.tierText}>
+                                <Text style={styles.tierText}>
                                     {tier ?? "…"}
-                                </ThemedText>
+                                </Text>
                             </View>
                         </View>
 
-                        <ThemedText style={styles.hint}>
+                        <Text style={styles.hint}>
                             Preset taps — intensity × sharpness
-                        </ThemedText>
+                        </Text>
                         <View style={styles.padGrid}>
                             {TAP_PADS.map((p) => (
                                 <HapticPad
@@ -440,9 +447,9 @@ function HapticPad({
                 },
             ]}
         >
-            <ThemedText style={styles.padTitle}>{title}</ThemedText>
+            <Text style={styles.padTitle}>{title}</Text>
             {subtitle ? (
-                <ThemedText style={styles.padSub}>{subtitle}</ThemedText>
+                <Text style={styles.padSub}>{subtitle}</Text>
             ) : null}
         </Pressable>
     );
@@ -469,9 +476,8 @@ const styles = StyleSheet.create({
         paddingVertical: Spacing.six,
         gap: Spacing.six,
     },
-    title: {
-        color: "white",
-        textAlign: "center",
+    titleWrap: {
+        alignItems: "center",
     },
     buttonArea: {
         alignItems: "center",
