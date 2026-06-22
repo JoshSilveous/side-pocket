@@ -10,9 +10,9 @@ import {
     withTiming,
 } from "react-native-reanimated";
 
+import SidePocketHaptics from "../../modules/side-pocket-haptics";
 import { NeonText } from "./neon-text";
 import { NeonTube } from "./neon-tube";
-import SidePocketHaptics from "../../modules/side-pocket-haptics";
 
 // ════════════════════════════════════════════════════════════════════════════
 //  TUBE LOOK — tweak the button's neon here.
@@ -48,7 +48,7 @@ const RELEASE_INTENSITY = 1;
 const RELEASE_SHARPNESS = 0.15; // hard + dull
 
 // ── Press visual — overdrive past 100% + burn-out flicker while held ──
-const PRESS_OVERDRIVE = 1.7; // brightness multiplier peak while held
+const PRESS_OVERDRIVE = 2.7; // brightness multiplier peak while held
 
 function buildRoundedRectPath(w: number, h: number, r: number): string {
     return (

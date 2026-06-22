@@ -17,7 +17,7 @@ import Animated, {
 /** Brightness at which the white "burn-out" overdrive layer is fully blown in.
  *  Brightness 1 = normal full glow; values from 1 → OVERDRIVE_MAX fade in an
  *  overexposed white bloom on top (driven by press / flicker animations). */
-const OVERDRIVE_MAX = 2;
+const OVERDRIVE_MAX = 3;
 
 export type NeonTubeProps = {
     path: string;
@@ -50,9 +50,8 @@ export function NeonTube({
     innerGlow = true,
     glowPadding = 40,
 }: NeonTubeProps) {
-
     const staticBrightness = useSharedValue(
-        typeof brightness === "number" ? brightness : 1
+        typeof brightness === "number" ? brightness : 1,
     );
     const activeBrightness: SharedValue<number> =
         brightness !== undefined && typeof brightness !== "number"
@@ -97,121 +96,199 @@ export function NeonTube({
 
     return (
         <>
-        {/* ── Cold tube: always visible, no brightness control ── */}
-        {/* Looks like an unpowered neon rod — dark grey glass tubing. */}
-        <View pointerEvents="none" style={tubePosStyle}>
-            <Canvas style={[StyleSheet.absoluteFill, { backgroundColor: "transparent" }]}>
-                <Group transform={[{ translateX: glowPadding }, { translateY: glowPadding }]}>
-                    <Path path={skPath} color="transparent">
-                        <Paint color="#55555f" style="stroke" strokeWidth={tubeWidth * 0.3}>
-                            <BlurMask blur={tubeWidth * 0.12} style="normal" />
-                        </Paint>
-                    </Path>
-                </Group>
-            </Canvas>
-        </View>
-
-        {/* ── Animated glow layers: fade with brightness ── */}
-        <Animated.View
-            pointerEvents="none"
-            style={[
-                { ...tubePosStyle, backgroundColor: "transparent" },
-                canvasAnimatedStyle,
-            ]}
-        >
-            <Canvas style={[StyleSheet.absoluteFill, { backgroundColor: "transparent" }]}>
-                <Group transform={[{ translateX: glowPadding }, { translateY: glowPadding }]}>
-
-                    {innerGlow && (
-                        // color="transparent" suppresses the implicit black fill that RN Skia
-                        // draws before applying Paint children. The Paint child handles the
-                        // actual fill with inner blur.
-                        <Path path={skPath} color="transparent" opacity={0.35}>
-                            <Paint color={color}>
-                                <BlurMask blur={tubeWidth * 2.5 * glow} style="inner" />
+            {/* ── Cold tube: always visible, no brightness control ── */}
+            {/* Looks like an unpowered neon rod — dark grey glass tubing. */}
+            <View pointerEvents="none" style={tubePosStyle}>
+                <Canvas
+                    style={[
+                        StyleSheet.absoluteFill,
+                        { backgroundColor: "transparent" },
+                    ]}
+                >
+                    <Group
+                        transform={[
+                            { translateX: glowPadding },
+                            { translateY: glowPadding },
+                        ]}
+                    >
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color="#55555f"
+                                style="stroke"
+                                strokeWidth={tubeWidth * 0.3}
+                            >
+                                <BlurMask
+                                    blur={tubeWidth * 0.12}
+                                    style="normal"
+                                />
                             </Paint>
                         </Path>
-                    )}
+                    </Group>
+                </Canvas>
+            </View>
 
-                    {/* Outer bloom x2 */}
-                    <Path path={skPath} color="transparent">
-                        <Paint color={color} style="stroke" strokeWidth={tubeWidth * 0.3}>
-                            <BlurMask blur={bloomBlur} style="outer" />
-                        </Paint>
-                    </Path>
-                    <Path path={skPath} color="transparent">
-                        <Paint color={color} style="stroke" strokeWidth={tubeWidth * 0.3}>
-                            <BlurMask blur={bloomBlur} style="outer" />
-                        </Paint>
-                    </Path>
+            {/* ── Animated glow layers: fade with brightness ── */}
+            <Animated.View
+                pointerEvents="none"
+                style={[
+                    { ...tubePosStyle, backgroundColor: "transparent" },
+                    canvasAnimatedStyle,
+                ]}
+            >
+                <Canvas
+                    style={[
+                        StyleSheet.absoluteFill,
+                        { backgroundColor: "transparent" },
+                    ]}
+                >
+                    <Group
+                        transform={[
+                            { translateX: glowPadding },
+                            { translateY: glowPadding },
+                        ]}
+                    >
+                        {innerGlow && (
+                            // color="transparent" suppresses the implicit black fill that RN Skia
+                            // draws before applying Paint children. The Paint child handles the
+                            // actual fill with inner blur.
+                            <Path
+                                path={skPath}
+                                color="transparent"
+                                opacity={0.35}
+                            >
+                                <Paint color={color}>
+                                    <BlurMask
+                                        blur={tubeWidth * 2.5 * glow}
+                                        style="inner"
+                                    />
+                                </Paint>
+                            </Path>
+                        )}
 
-                    {/* Mid halo */}
-                    <Path path={skPath} color="transparent">
-                        <Paint color={color} style="stroke" strokeWidth={tubeWidth * 0.7}>
-                            <BlurMask blur={haloBlur} style="outer" />
-                        </Paint>
-                    </Path>
+                        {/* Outer bloom x2 */}
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color={color}
+                                style="stroke"
+                                strokeWidth={tubeWidth * 0.3}
+                            >
+                                <BlurMask blur={bloomBlur} style="outer" />
+                            </Paint>
+                        </Path>
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color={color}
+                                style="stroke"
+                                strokeWidth={tubeWidth * 0.3}
+                            >
+                                <BlurMask blur={bloomBlur} style="outer" />
+                            </Paint>
+                        </Path>
 
-                    {/* Tube body */}
-                    <Path path={skPath} color="transparent">
-                        <Paint color={color} style="stroke" strokeWidth={tubeWidth}>
-                            <BlurMask blur={bodyBlur} style="normal" />
-                        </Paint>
-                    </Path>
+                        {/* Mid halo */}
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color={color}
+                                style="stroke"
+                                strokeWidth={tubeWidth * 0.7}
+                            >
+                                <BlurMask blur={haloBlur} style="outer" />
+                            </Paint>
+                        </Path>
 
-                    {/* Warm core */}
-                    <Path path={skPath} color="transparent">
-                        <Paint color={warmColor} style="stroke" strokeWidth={tubeWidth * 0.4}>
-                            <BlurMask blur={warmBlur} style="normal" />
-                        </Paint>
-                    </Path>
+                        {/* Tube body */}
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color={color}
+                                style="stroke"
+                                strokeWidth={tubeWidth}
+                            >
+                                <BlurMask blur={bodyBlur} style="normal" />
+                            </Paint>
+                        </Path>
 
-                    {/* Hot core glow — soft white halo just around the core */}
-                    <Path path={skPath} color="transparent">
-                        <Paint color="#ffffff" style="stroke" strokeWidth={tubeWidth * 0.3}>
-                            <BlurMask blur={hotBlur} style="normal" />
-                        </Paint>
-                    </Path>
+                        {/* Warm core */}
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color={warmColor}
+                                style="stroke"
+                                strokeWidth={tubeWidth * 0.4}
+                            >
+                                <BlurMask blur={warmBlur} style="normal" />
+                            </Paint>
+                        </Path>
 
-                    {/* Hot core — crisp white center line (no blur) for a clean core */}
-                    <Path
-                        path={skPath}
-                        color="#ffffff"
-                        style="stroke"
-                        strokeWidth={tubeWidth * 0.22}
-                        strokeCap="round"
-                        strokeJoin="round"
-                    />
+                        {/* Hot core glow — soft white halo just around the core */}
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color="#ffffff"
+                                style="stroke"
+                                strokeWidth={tubeWidth * 0.3}
+                            >
+                                <BlurMask blur={hotBlur} style="normal" />
+                            </Paint>
+                        </Path>
 
-                </Group>
-            </Canvas>
-        </Animated.View>
+                        {/* Hot core — crisp white center line (no blur) for a clean core */}
+                        <Path
+                            path={skPath}
+                            color="#ffffff"
+                            style="stroke"
+                            strokeWidth={tubeWidth * 0.22}
+                            strokeCap="round"
+                            strokeJoin="round"
+                        />
+                    </Group>
+                </Canvas>
+            </Animated.View>
 
-        {/* ── Overdrive layer: white blow-out that fades in past 100% brightness ── */}
-        <Animated.View
-            pointerEvents="none"
-            style={[
-                { ...tubePosStyle, backgroundColor: "transparent" },
-                overdriveStyle,
-            ]}
-        >
-            <Canvas style={[StyleSheet.absoluteFill, { backgroundColor: "transparent" }]}>
-                <Group transform={[{ translateX: glowPadding }, { translateY: glowPadding }]}>
-                    {/* Wide overexposed white bloom */}
-                    <Path path={skPath} color="transparent">
-                        <Paint color="#ffffff" style="stroke" strokeWidth={tubeWidth * 0.8}>
-                            <BlurMask blur={bloomBlur * 1.6} style="outer" />
-                        </Paint>
-                    </Path>
-                    {/* Fattened white body so the tube itself looks blown out */}
-                    <Path path={skPath} color="transparent">
-                        <Paint color="#ffffff" style="stroke" strokeWidth={tubeWidth * 0.7}>
-                            <BlurMask blur={haloBlur} style="normal" />
-                        </Paint>
-                    </Path>
-                </Group>
-            </Canvas>
-        </Animated.View>
+            {/* ── Overdrive layer: extra glow in the tube's OWN colour that fades in past
+              100% brightness — intensifies the existing glow, no white blow-out. ── */}
+            <Animated.View
+                pointerEvents="none"
+                style={[
+                    { ...tubePosStyle, backgroundColor: "transparent" },
+                    overdriveStyle,
+                ]}
+            >
+                <Canvas
+                    style={[
+                        StyleSheet.absoluteFill,
+                        { backgroundColor: "transparent" },
+                    ]}
+                >
+                    <Group
+                        transform={[
+                            { translateX: glowPadding },
+                            { translateY: glowPadding },
+                        ]}
+                    >
+                        {/* Extra wide bloom in the tube's colour */}
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color={color}
+                                style="stroke"
+                                strokeWidth={tubeWidth * 0.5}
+                            >
+                                <BlurMask
+                                    blur={bloomBlur * 1.6}
+                                    style="outer"
+                                />
+                            </Paint>
+                        </Path>
+                        {/* Extra mid halo in the tube's colour */}
+                        <Path path={skPath} color="transparent">
+                            <Paint
+                                color={color}
+                                style="stroke"
+                                strokeWidth={tubeWidth}
+                            >
+                                <BlurMask blur={haloBlur} style="outer" />
+                            </Paint>
+                        </Path>
+                    </Group>
+                </Canvas>
+            </Animated.View>
         </>
     );
 }
