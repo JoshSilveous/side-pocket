@@ -7,13 +7,13 @@ import { useRouter, type Href } from "expo-router";
 /**
  * Hidden developer menu.
  *
- * Press and hold with THREE fingers for ~600ms anywhere in the app to reveal a
+ * Press and hold with FIVE fingers for ~600ms anywhere in the app to reveal a
  * small overlay that routes to the dev-only screens. There's no nav bar, so this
- * is the only way in — and a 3-finger hold won't ever trigger by accident during
+ * is the only way in — and a 5-finger hold won't trigger during
  * normal one-finger play. Delete (or gate behind __DEV__) before shipping.
  *
  * How the gesture coexists with normal touches: react-native-gesture-handler
- * runs this LongPress alongside whatever the children do. A 3-pointer gesture
+ * observes touches on the enclosing view. A 5-pointer gesture
  * simply never recognizes on a 1-finger tap, and it does not swallow those
  * touches — so buttons underneath keep working.
  */
@@ -27,10 +27,10 @@ export function DevMenu({ children }: { children: ReactNode }) {
     const [open, setOpen] = useState(false);
     const router = useRouter();
 
-    // numberOfPointers(3) = exactly three fingers; minDuration = press-and-hold.
+    // Match the five-finger shortcut on both platforms.
     // .onStart fires on the UI thread, so hop back to JS with runOnJS to setState.
     const longPress = Gesture.LongPress()
-        .numberOfPointers(3)
+        .numberOfPointers(5)
         .minDuration(600)
         .maxDistance(40)
         .onStart(() => runOnJS(setOpen)(true));
@@ -84,7 +84,7 @@ const NEON = "#39ff14";
 const styles = StyleSheet.create({
     fill: { flex: 1 },
     overlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: "#000000e6",
         alignItems: "center",
         justifyContent: "center",

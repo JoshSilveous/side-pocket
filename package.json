@@ -8,6 +8,7 @@
         "@shopify/react-native-skia": "2.6.2",
         "expo": "~56.0.6",
         "expo-constants": "~56.0.16",
+        "expo-dev-client": "~56.0.27",
         "expo-device": "~56.0.4",
         "expo-font": "~56.0.5",
         "expo-glass-effect": "~56.0.4",
@@ -41,7 +42,8 @@
         "android": "expo run:android",
         "ios": "expo run:ios",
         "web": "expo start --web",
-        "lint": "expo lint"
+        "lint": "expo lint",
+        "lan": "expo start --dev-client --lan"
     },
     "private": true
 }

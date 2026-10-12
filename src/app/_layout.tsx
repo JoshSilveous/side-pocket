@@ -15,7 +15,7 @@ export default function RootLayout() {
                     No native tab/nav bar anymore — the whole app lives behind a
                     headerless Stack. `index` is the persistent game surface;
                     `ui-testing` / `splash-animation` still exist as routes but
-                    are only reachable via the 3-finger DevMenu.
+                    are only reachable via the 5-finger DevMenu.
                     Black contentStyle prevents a white flash between routes.
                 */}
                 <DevMenu>
