@@ -6,16 +6,22 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { Platform, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { useSharedValue, type SharedValue } from "react-native-reanimated";
 
 import { BrickBackground, type WallTextures } from "./BrickBackground";
 import { DustParticles } from "./DustParticles";
 import { NeonRendererContext } from "./NeonRendererContext";
 import type { LightSource } from "./types";
+import { ANDROID_PERFORMANCE_MODE, RENDER_QUALITY, type RenderQuality } from "./render-quality";
+
+const DEFAULT_QUALITY: RenderQuality =
+  Platform.OS === "android" && ANDROID_PERFORMANCE_MODE ? "performance" : "full";
 
 type Props = {
   children: ReactNode;
+  /** Shared rendering preset; defaults to the temporary platform test setting. */
+  quality?: RenderQuality;
   /**
    * Brick wall textures. Provide all three for the full effect.
    * Until these are supplied the background is black (correct for a dark bar).
@@ -71,7 +77,9 @@ export function NeonRenderer({
   background = true,
   particles = true,
   scrollOffset,
+  quality = DEFAULT_QUALITY,
 }: Props) {
+  const preset = RENDER_QUALITY[quality];
   const containerRef = useRef<View>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [lights, setLights] = useState<LightSource[]>([]);
@@ -161,6 +169,8 @@ export function NeonRenderer({
         {/* ── Layer 0: brick background ── */}
         {ready && background && (
           <BrickBackground
+            key={quality}
+            quality={quality}
             lightsShared={lightsShared}
             intensityShared={intensityShared}
             scrollShared={scrollShared}
@@ -177,6 +187,8 @@ export function NeonRenderer({
         {/* ── Layer 2: dust particles (above neon tubes) ── */}
         {ready && particles && (
           <DustParticles
+            key={quality}
+            particleCount={preset.particleCount}
             lightsShared={lightsShared}
             intensityShared={intensityShared}
             scrollShared={scrollShared}

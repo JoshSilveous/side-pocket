@@ -10,6 +10,10 @@ import expo.modules.kotlin.modules.ModuleDefinition
 
 class SidePocketHapticsModule : Module() {
 
+  private companion object {
+    const val AMPLITUDE_GAIN = 0.5
+  }
+
   private val vibrator: Vibrator?
     get() {
       val context = appContext.reactContext ?: return null
@@ -89,14 +93,20 @@ class SidePocketHapticsModule : Module() {
 
   private fun oneShot(durationMs: Long, intensity: Double) {
     val v = vibrator ?: return
+    val amp = amplitude(intensity)
+    if (amp == 0) return // One-shot effects require a positive amplitude.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      v.vibrate(VibrationEffect.createOneShot(durationMs, amplitude(intensity)))
+      v.vibrate(VibrationEffect.createOneShot(durationMs, amp))
     } else {
       @Suppress("DEPRECATION") v.vibrate(durationMs)
     }
   }
 
-  // 0..1 → 1..255. Amplitude 0 means "device default", so floor positive values at 1.
-  private fun amplitude(intensity: Double): Int =
-    (intensity.coerceIn(0.0, 1.0) * 255).toInt().coerceIn(1, 255)
+  // Android-only gain; preserve the authored envelope and iOS tuning.
+  // Waveform amplitude 0 is silence (-1 is the device default).
+  private fun amplitude(intensity: Double): Int {
+    val clamped = intensity.coerceIn(0.0, 1.0)
+    return if (clamped == 0.0) 0 else
+      (clamped * AMPLITUDE_GAIN * 255).toInt().coerceIn(1, 255)
+  }
 }

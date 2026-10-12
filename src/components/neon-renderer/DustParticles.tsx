@@ -74,8 +74,8 @@ type Particle = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function initParticles(w: number, h: number): Particle[] {
-    return Array.from({ length: PARTICLE_COUNT }, () => ({
+function initParticles(w: number, h: number, count: number): Particle[] {
+    return Array.from({ length: count }, () => ({
         x: Math.random() * w,
         y: Math.random() * h,
         vx: (Math.random() - 0.5) * MAX_SPEED,
@@ -92,6 +92,7 @@ type Props = {
     scrollShared: SharedValue<number>;
     width: number;
     height: number;
+    particleCount?: number;
 };
 
 export const DustParticles = memo(function DustParticles({
@@ -100,6 +101,7 @@ export const DustParticles = memo(function DustParticles({
     scrollShared,
     width,
     height,
+    particleCount = PARTICLE_COUNT,
 }: Props) {
     "use no memo";
     // React Compiler hoists helpers out of Skia buffer worklets and reads their
@@ -109,8 +111,8 @@ export const DustParticles = memo(function DustParticles({
     // All particle state lives in a SharedValue and is advanced on the UI thread.
     // No React state → no per-frame reconciliation.
     const initialParticles = useMemo(
-        () => initParticles(width, height),
-        [width, height],
+        () => initParticles(width, height, particleCount),
+        [width, height, particleCount],
     );
     const particles = useSharedValue<Particle[]>(initialParticles);
     const acc = useSharedValue(0);
@@ -138,10 +140,10 @@ export const DustParticles = memo(function DustParticles({
     // Every instance samples the full sprite texture — static.
     const sprites = useMemo(
         () =>
-            Array.from({ length: PARTICLE_COUNT }, () =>
+            Array.from({ length: particleCount }, () =>
                 Skia.XYWHRect(0, 0, SPRITE, SPRITE),
             ),
-        [],
+        [particleCount],
     );
 
     // ── Simulation (UI thread) ────────────────────────────────────────────────
@@ -152,7 +154,7 @@ export const DustParticles = memo(function DustParticles({
         acc.value = 0;
 
         // Notify the Atlas buffers after the in-place update, without allocating
-        // a new 640-element array on every simulation step.
+        // a new particle array on every simulation step.
         particles.modify((arr) => {
             "worklet";
             for (let i = 0; i < arr.length; i++) {
@@ -187,7 +189,7 @@ export const DustParticles = memo(function DustParticles({
     }, [isFocused, frame]);
 
     // ── Per-instance transforms (position + scale) ────────────────────────────
-    const transforms = useRSXformBuffer(PARTICLE_COUNT, (val, i) => {
+    const transforms = useRSXformBuffer(particleCount, (val, i) => {
         "worklet";
         const p = particles.value[i];
         const diameter = p.size * RENDER_DIAMETER_FACTOR;
@@ -220,7 +222,7 @@ export const DustParticles = memo(function DustParticles({
     // then run through a tight falloff curve: ~invisible until close, ramps, then
     // white-hot right over the tube. With colorBlendMode="modulate" the white sprite
     // is multiplied by this colour; alpha carries the per-particle opacity.
-    const colors = useColorBuffer(PARTICLE_COUNT, (val, i) => {
+    const colors = useColorBuffer(particleCount, (val, i) => {
         "worklet";
         const p = particles.value[i];
         const geometry = lightGeometry.value;

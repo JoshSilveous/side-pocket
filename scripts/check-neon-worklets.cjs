@@ -10,7 +10,7 @@ const babel = require("@babel/core");
 const filename = path.resolve(__dirname, "../src/components/neon-renderer/DustParticles.tsx");
 const source = fs.readFileSync(filename, "utf8");
 
-function check(input, platform, isDev) {
+function check(input, platform, isDev, particleCount = 640) {
     const { code } = babel.transformSync(input, {
         filename,
         babelrc: false,
@@ -70,8 +70,8 @@ function check(input, platform, isDev) {
         "@shopify/react-native-skia": {
             Skia: { XYWHRect: () => ({}) },
             useTexture: () => ({}),
-            useRSXformBuffer: (_, fn) => { callbacks.transform = fn; return {}; },
-            useColorBuffer: (_, fn) => { callbacks.color = fn; return {}; },
+            useRSXformBuffer: (count, fn) => { assert.equal(count, particleCount); callbacks.transform = fn; return {}; },
+            useColorBuffer: (count, fn) => { assert.equal(count, particleCount); callbacks.color = fn; return {}; },
         },
     };
     const runtime = vm.createContext({
@@ -82,6 +82,7 @@ function check(input, platform, isDev) {
     vm.runInContext(code, runtime);
     rendering = true;
     runtime.exports.DustParticles({
+        particleCount,
         width: 390,
         height: 844,
         lightsShared: sharedValue([{ id: "tube", emitters: [20, 140], r: 1, g: 0, b: 0, intensity: 1 }]),
@@ -93,6 +94,7 @@ function check(input, platform, isDev) {
     for (const [fn, sv] of derived) sv.value = onUI(fn)();
 
     const particles = shared[0].value;
+    assert.equal(particles.length, particleCount);
     Object.assign(particles[0], { x: 20, y: 40 });
     Object.assign(particles[1], { x: 380, y: 800 });
     const color = onUI(callbacks.color);
@@ -113,7 +115,7 @@ function check(input, platform, isDev) {
 
 for (const platform of ["android", "ios"]) {
     for (const isDev of [true, false]) {
-        check(source, platform, isDev);
+        for (const count of [160, 640]) check(source, platform, isDev, count);
         console.log(`PASS: ${platform} ${isDev ? "development" : "production"} worklets with React Compiler enabled`);
     }
 }

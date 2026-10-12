@@ -1,3 +1,4 @@
+import { Skia } from "@shopify/react-native-skia";
 import {
     forwardRef,
     useCallback,
@@ -474,11 +475,10 @@ export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
         const hitPaths = useMemo(
             () =>
                 scaled.map((p) => {
-                    const c = p.copy();
-                    const stroked = c.stroke({
+                    const stroked = Skia.Path.Stroke(p, {
                         width: tubeWidth + TAP_HIT_SLOP * 2,
                     });
-                    return stroked ?? c;
+                    return stroked ?? p;
                 }),
             [scaled, tubeWidth],
         );

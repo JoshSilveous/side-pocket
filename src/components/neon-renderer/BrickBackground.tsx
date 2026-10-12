@@ -10,13 +10,15 @@ import {
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 
 import type { LightSource } from "./types";
+import { RENDER_QUALITY, type RenderQuality } from "./render-quality";
+import { useWallLighting } from "./useWallLighting";
+import { buildWallShader, MAX_EMITTERS } from "./wall-shader";
 
 // ── Light model ──────────────────────────────────────────────────────────────
 // The wall is lit by EMITTER POINTS sampled along each tube path (never a centre).
 // We flatten every tube's emitters into one array of point-lights; each tube splits
 // its intensity across the emitters we keep, so total wall brightness stays ≈ one
 // light's worth — just sourced from the outline. Reinhard compresses any overlap.
-const MAX_EMITTERS = 48;
 /** Max emitters kept per tube for the (soft, coarse) wall wash. With many lights
  *  (e.g. a per-path neon sign) the budget is split adaptively so each light still
  *  gets at least one wall emitter — see `perLight` below. */
@@ -37,96 +39,21 @@ const BRICK_OVERDRIVE_REACH = 0.4;
  */
 const SIGN_WALL_GAIN = 0.2;
 
-// ── SkSL shader ────────────────────────────────────────────────────────────
-// Samples three textures (albedo, normal map, roughness map) and applies
-// normal-mapped neon lighting from emitter point-lights.
-//
-// Coordinate convention:
-//   fragCoord is in *canvas* pixels (the canvas may be rendered below screen
-//   resolution for performance). `screenScale` converts canvas coords back to
-//   screen pixels so lighting + tiling stay resolution-independent.
-//   texScale (uniform) converts screen coords to texture-tiling coords.
-//
-// Normal map convention: standard OpenGL tangent-space.
-//   R = +X (right), G = +Y (up in tangent space), B = +Z (surface normal).
-//   Flat surface = RGB(128, 128, 255).
-const TEXTURE_SHADER = `
-uniform shader albedo;
-uniform shader normalMap;
-uniform shader roughnessMap;
-uniform float  screenScale; // canvas px -> screen px (1.0 when rendered full-res)
-uniform float2 texScale;
-uniform float2 imgSize;   // albedo pixel dimensions — used by mod() tiling
-uniform float  wallZ;
-uniform int    numEmitters;
-
-uniform float4 emitters[${MAX_EMITTERS}];      // (x, y, reach, intensity), screen coords
-uniform float4 emitterColors[${MAX_EMITTERS}]; // (r, g, b, _)
-
-float3 applyLight(float4 light, float4 lColor, float2 fragCoord,
-                  float3 N, float roughness, float wZ) {
-    float2 toLight  = light.xy - fragCoord;
-    float  dist     = length(toLight);
-    float  radius   = light.z;
-    float  intensity = light.w;
-    if (dist >= radius || intensity <= 0.0) { return float3(0.0); }
-
-    float atten    = 1.0 - dist / radius;
-    atten          = atten * atten * atten * atten * atten * atten ;
-    float3 L       = normalize(float3(toLight, wZ));
-    float  diff    = max(0.0, dot(N, L));
-    float3 V       = float3(0.0, 0.0, 1.0);
-    float3 H       = normalize(L + V);
-    float  shine   = mix(96.0, 3.0, roughness);
-    float  spec    = pow(max(0.0, dot(N, H)), shine);
-
-    return lColor.rgb * intensity * atten * (diff + spec * 0.4);
-}
-
-half4 main(float2 fragCoord) {
-    // Work in screen pixels regardless of the canvas render resolution.
-    float2 sc = fragCoord * screenScale;
-    float2 tc = mod(sc * texScale, imgSize);
-
-    half4  albedoSample = albedo.eval(tc);
-    half4  normalSample = normalMap.eval(tc);
-    float  roughness    = roughnessMap.eval(tc).r;
-
-    // Decode tangent-space normal: [0,1] -> [-1,1]
-    float3 N = normalize(float3(normalSample.rg * 2.0 - 1.0, normalSample.b));
-
-    // Near-black ambient — bricks almost invisible without neon (~2%)
-    float3 totalLight = float3(0.02, 0.012, 0.015);
-
-    for (int i = 0; i < ${MAX_EMITTERS}; i++) {
-        if (i >= numEmitters) { break; }
-        totalLight += applyLight(emitters[i], emitterColors[i], sc, N, roughness, wallZ);
+// Compile each shader variant once, on first use. Performance mode omits the
+// roughness sampler and specular math entirely instead of branching per fragment.
+const textureEffects = new Map<boolean, ReturnType<typeof Skia.RuntimeEffect.Make>>();
+function getTextureEffect(specular: boolean) {
+    if (!textureEffects.has(specular)) {
+        let effect: ReturnType<typeof Skia.RuntimeEffect.Make> = null;
+        try {
+            effect = Skia.RuntimeEffect.Make(buildWallShader(specular));
+            if (!effect) console.warn("[BrickBackground] Shader compilation failed.");
+        } catch (error) {
+            console.error("[BrickBackground] SkSL compile error:", error);
+        }
+        textureEffects.set(specular, effect);
     }
-
-    // Reinhard tone map then apply to albedo
-    totalLight = totalLight / (totalLight + float3(1.0));
-    return half4(half3(albedoSample.rgb * totalLight), 1.0);
-}
-`;
-
-/**
- * Internal render resolution for the brick wall, as a fraction of screen size.
- * The wall is a dim, low-frequency background, so rendering below native
- * resolution and upscaling is imperceptible but cuts fragment-shader work
- * (~1 / RES²). Set to 1 to disable.
- */
-const BRICK_RENDER_SCALE = 0.75;
-
-let textureEffect: ReturnType<typeof Skia.RuntimeEffect.Make> | null = null;
-try {
-    textureEffect = Skia.RuntimeEffect.Make(TEXTURE_SHADER);
-    if (!textureEffect) {
-        console.warn(
-            "[BrickBackground] Shader returned falsy — likely unsupported on this platform.",
-        );
-    }
-} catch (e) {
-    console.error("[BrickBackground] SkSL compile error:", e);
+    return textureEffects.get(specular);
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -141,6 +68,7 @@ export type WallTextures = {
 };
 
 type Props = {
+    quality?: RenderQuality;
     lightsShared: SharedValue<LightSource[]>;
     intensityShared: SharedValue<Record<string, number>>;
     scrollShared: SharedValue<number>;
@@ -170,16 +98,22 @@ export function BrickBackground({
     textures,
     tileCount = 4,
     wallZ = 220,
+    quality = "full",
 }: Props) {
+    "use no memo";
+    // Keep shared-value reads on the UI thread under React Compiler.
+    const { wallRenderScale, wallLightingFps, wallSpecular } = RENDER_QUALITY[quality];
+    const lighting = useWallLighting(lightsShared, intensityShared, scrollShared, wallLightingFps);
+    const textureEffect = getTextureEffect(wallSpecular);
     const albedoImg = useImage(textures?.albedo ?? null);
     const normalImg = useImage(textures?.normalMap ?? null);
-    const roughnessImg = useImage(textures?.roughnessMap ?? null);
+    const roughnessImg = useImage(wallSpecular ? textures?.roughnessMap ?? null : null);
 
     // Reduced-resolution canvas, upscaled to fill via a top-left transform.
     // Kept as floats (no rounding) so width*RES * (1/RES) lands exactly on `width`
     // — avoids a sub-pixel uncovered sliver at the right/bottom edge.
-    const canvasW = Math.max(1, width * BRICK_RENDER_SCALE);
-    const canvasH = Math.max(1, height * BRICK_RENDER_SCALE);
+    const canvasW = Math.max(1, width * wallRenderScale);
+    const canvasH = Math.max(1, height * wallRenderScale);
 
     // Isotropic texture scale — both axes share this so the texture keeps its
     // natural aspect ratio. Computed in *screen* space (independent of render res).
@@ -194,9 +128,10 @@ export function BrickBackground({
     // them; emitter Y is content-space, so we subtract the live scroll offset.
     const uniforms = useDerivedValue(() => {
         "worklet";
-        const lights = lightsShared.value;
-        const intens = intensityShared.value;
-        const scroll = scrollShared.value;
+        const snapshot = lighting.value;
+        const lights = snapshot.lights;
+        const intens = snapshot.intensities;
+        const scroll = snapshot.scroll;
 
         const emitters: number[] = new Array(MAX_EMITTERS * 4).fill(0);
         const emitterColors: number[] = new Array(MAX_EMITTERS * 4).fill(0);
@@ -253,7 +188,7 @@ export function BrickBackground({
         }
 
         return {
-            screenScale: 1 / BRICK_RENDER_SCALE,
+            screenScale: 1 / wallRenderScale,
             texScale: [scaleX, scaleX],
             imgSize: [imgW, imgH],
             wallZ,
@@ -261,10 +196,10 @@ export function BrickBackground({
             emitters,
             emitterColors,
         };
-    }, [scaleX, imgW, imgH, wallZ]);
+    }, [lighting, wallRenderScale, scaleX, imgW, imgH, wallZ]);
 
-    // Wait until all three textures are loaded and shader compiled
-    if (!textureEffect || !albedoImg || !normalImg || !roughnessImg) {
+    // Wait for the textures used by this shader variant.
+    if (!textureEffect || !albedoImg || !normalImg || (wallSpecular && !roughnessImg)) {
         return null; // NeonRenderer's black background shows through
     }
 
@@ -277,7 +212,7 @@ export function BrickBackground({
                 width: canvasW,
                 height: canvasH,
                 transformOrigin: "0% 0%",
-                transform: [{ scale: 1 / BRICK_RENDER_SCALE }],
+                transform: [{ scale: 1 / wallRenderScale }],
             }}
             pointerEvents="none"
         >
@@ -287,7 +222,7 @@ export function BrickBackground({
                     {/* No tx/ty — tiling is handled by mod() in the shader instead */}
                     <ImageShader image={albedoImg} />
                     <ImageShader image={normalImg} />
-                    <ImageShader image={roughnessImg} />
+                    {wallSpecular && <ImageShader image={roughnessImg} />}
                 </Shader>
             </Fill>
         </Canvas>
