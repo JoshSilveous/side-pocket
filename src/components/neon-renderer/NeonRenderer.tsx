@@ -169,7 +169,7 @@ export function NeonRenderer({
         {/* ── Layer 0: brick background ── */}
         {ready && background && (
           <BrickBackground
-            key={quality}
+            key={`wall-${quality}`}
             quality={quality}
             lightsShared={lightsShared}
             intensityShared={intensityShared}
@@ -187,7 +187,7 @@ export function NeonRenderer({
         {/* ── Layer 2: dust particles (above neon tubes) ── */}
         {ready && particles && (
           <DustParticles
-            key={quality}
+            key={`dust-${quality}`}
             particleCount={preset.particleCount}
             lightsShared={lightsShared}
             intensityShared={intensityShared}
