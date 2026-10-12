@@ -188,7 +188,11 @@ export function NeonLightSource({
         (v) => {
             "worklet";
             if (!intensityShared) return;
-            intensityShared.value = { ...intensityShared.value, [id]: v };
+            intensityShared.modify((intensities) => {
+                "worklet";
+                intensities[id] = v;
+                return intensities;
+            });
         },
         [id, intensityShared],
     );

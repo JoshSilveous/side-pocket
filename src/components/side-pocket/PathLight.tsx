@@ -88,9 +88,11 @@ export function PathLight({
         (v) => {
             "worklet";
             if (!intensityShared) return;
-            const next = Object.assign({}, intensityShared.value);
-            next[id] = v;
-            intensityShared.value = next;
+            intensityShared.modify((intensities) => {
+                "worklet";
+                intensities[id] = v;
+                return intensities;
+            });
         },
         [id, intensityShared],
     );

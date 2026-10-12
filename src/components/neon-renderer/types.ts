@@ -29,7 +29,6 @@ export type NeonRendererContextValue = {
   /** Update only colour on an existing light — skips native measure(), much faster */
   updateLight: (id: string, updates: Pick<LightSource, "r" | "g" | "b">) => void;
   unregisterLight: (id: string) => void;
-  lights: LightSource[];
   /**
    * Reanimated mirror of the structural light list (position/colour/radius).
    * Consumed by UI-thread worklets (dust + brick) so lighting updates without a

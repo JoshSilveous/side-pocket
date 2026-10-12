@@ -135,9 +135,7 @@ export function NeonSVG({
 }: NeonSVGProps) {
     const id = useId();
     const renderer = useNeonRenderer();
-    // Stash in a ref: the renderer context object is recreated on every
-    // NeonRenderer render (it carries `lights` state), so depending on it directly
-    // would re-fire the register effects on every register → infinite loop.
+    // Keep native measurement callbacks stable while reading the latest renderer.
     const rendererRef = useRef(renderer);
     rendererRef.current = renderer;
     const viewRef = useRef<View>(null);
@@ -223,16 +221,18 @@ export function NeonSVG({
     }, [emitLight, id, lr, lg, lb]);
 
     // Live brightness/flicker → intensityShared on the UI thread (no re-render).
-    // The SharedValue instance is stable even as the renderer object identity changes.
+    // The SharedValue instance is stable across structural light updates.
     const intensityShared = renderer?.intensityShared ?? null;
     useAnimatedReaction(
         () => bv.value,
         (v) => {
             "worklet";
             if (!intensityShared) return;
-            const next = Object.assign({}, intensityShared.value);
-            next[id] = v;
-            intensityShared.value = next;
+            intensityShared.modify((intensities) => {
+                "worklet";
+                intensities[id] = v;
+                return intensities;
+            });
         },
         [id, intensityShared],
     );

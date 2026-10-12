@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -100,43 +101,62 @@ export function NeonRenderer({
 
   const updateLight = useCallback(
     (id: string, updates: Pick<LightSource, "r" | "g" | "b">) => {
-      setLights((prev) =>
-        prev.map((l) => (l.id === id ? { ...l, ...updates } : l))
-      );
+      setLights((prev) => {
+        const light = prev.find((l) => l.id === id);
+        if (
+          !light ||
+          (light.r === updates.r && light.g === updates.g && light.b === updates.b)
+        ) {
+          return prev;
+        }
+        return prev.map((l) => (l.id === id ? { ...l, ...updates } : l));
+      });
     },
     []
   );
 
   const unregisterLight = useCallback(
     (id: string) => {
-      setLights((prev) => prev.filter((l) => l.id !== id));
-      const next = { ...intensityShared.value };
-      delete next[id];
-      intensityShared.value = next;
+      setLights((prev) =>
+        prev.some((l) => l.id === id) ? prev.filter((l) => l.id !== id) : prev
+      );
+      // Modify on the UI thread so cleanup cannot overwrite another light's
+      // concurrent brightness update with a stale JS-thread copy of the map.
+      intensityShared.modify((intensities) => {
+        "worklet";
+        delete intensities[id];
+        return intensities;
+      });
     },
     [intensityShared]
   );
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    setSize({ width, height });
+    setSize((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height }
+    );
   }, []);
+
+  // Consumers only need the stable registration API and shared buffers. Keeping
+  // the React light list private avoids rerendering every tube on registration.
+  const contextValue = useMemo(
+    () => ({
+      containerRef,
+      registerLight,
+      updateLight,
+      unregisterLight,
+      lightsShared,
+      intensityShared,
+      scrollShared,
+    }),
+    [registerLight, updateLight, unregisterLight, lightsShared, intensityShared, scrollShared]
+  );
 
   const ready = size.width > 0 && size.height > 0;
 
   return (
-    <NeonRendererContext.Provider
-      value={{
-        containerRef,
-        registerLight,
-        updateLight,
-        unregisterLight,
-        lights,
-        lightsShared,
-        intensityShared,
-        scrollShared,
-      }}
-    >
+    <NeonRendererContext.Provider value={contextValue}>
       <View ref={containerRef} style={styles.container} onLayout={onLayout}>
         {/* ── Layer 0: brick background ── */}
         {ready && background && (

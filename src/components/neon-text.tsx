@@ -90,8 +90,7 @@ export function NeonText({
 }: NeonTextProps) {
     const id = useId();
     const renderer = useNeonRenderer();
-    // Stash in a ref: the context object is recreated whenever a light registers,
-    // so depending on it directly would re-fire the register effect → loop.
+    // Keep native measurement callbacks stable while reading the latest renderer.
     const rendererRef = useRef(renderer);
     rendererRef.current = renderer;
     const viewRef = useRef<View>(null);
@@ -225,9 +224,11 @@ export function NeonText({
         (v) => {
             "worklet";
             if (!intensityShared) return;
-            const next = Object.assign({}, intensityShared.value);
-            next[id] = v < 0 ? 0 : v; // power can exceed 1 (overdrive); floor at 0
-            intensityShared.value = next;
+            intensityShared.modify((intensities) => {
+                "worklet";
+                intensities[id] = v < 0 ? 0 : v; // power can exceed 1 (overdrive); floor at 0
+                return intensities;
+            });
         },
         [id, intensityShared],
     );

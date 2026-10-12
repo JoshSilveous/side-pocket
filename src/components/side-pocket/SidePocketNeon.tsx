@@ -528,8 +528,8 @@ export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
         }, [haptics]);
 
         // Measure the sign's position so each tube's light emitters land on its
-        // tubes. rendererRef avoids a re-register loop (the renderer context object
-        // changes on every light registration).
+        // tubes. rendererRef keeps the native measurement callback stable while
+        // reading the latest renderer.
         const measure = useCallback(() => {
             const rdr = rendererRef.current;
             const v = viewRef.current;

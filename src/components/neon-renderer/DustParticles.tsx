@@ -10,9 +10,10 @@ import {
     useTexture,
 } from "@shopify/react-native-skia";
 import { useIsFocused } from "expo-router";
-import { useEffect, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import { AppState } from "react-native";
 import {
+    useDerivedValue,
     useFrameCallback,
     useSharedValue,
     type SharedValue,
@@ -53,6 +54,7 @@ const AMBIENT_OPACITY = 0.02;
 
 /** Pixel size of the baked soft-dot sprite texture. */
 const SPRITE = 48;
+const SPRITE_SIZE = { width: SPRITE, height: SPRITE };
 /**
  * On-screen dot diameter = particle.size × this. Tuned so the baked sprite's
  * soft halo matches the old `Circle r=size` + `BlurMask blur=size*0.7` look.
@@ -92,22 +94,31 @@ type Props = {
     height: number;
 };
 
-export function DustParticles({
+export const DustParticles = memo(function DustParticles({
     lightsShared,
     intensityShared,
     scrollShared,
     width,
     height,
 }: Props) {
+    "use no memo";
+    // React Compiler hoists helpers out of Skia buffer worklets and reads their
+    // shared-value dependencies during render. Keep this component's explicit
+    // memoization until those transforms are compatible (see worklet check).
+
     // All particle state lives in a SharedValue and is advanced on the UI thread.
     // No React state → no per-frame reconciliation.
-    const particles = useSharedValue<Particle[]>(initParticles(width, height));
+    const initialParticles = useMemo(
+        () => initParticles(width, height),
+        [width, height],
+    );
+    const particles = useSharedValue<Particle[]>(initialParticles);
     const acc = useSharedValue(0);
 
     // Re-seed when the canvas size changes.
     useEffect(() => {
-        particles.value = initParticles(width, height);
-    }, [width, height, particles]);
+        particles.value = initialParticles;
+    }, [initialParticles, particles]);
 
     // ── Baked sprite ──────────────────────────────────────────────────────────
     // One soft white dot, rendered offscreen to a texture *once*. The blur is
@@ -121,7 +132,7 @@ export function DustParticles({
         >
             <BlurMask blur={SPRITE * 0.16} style="normal" />
         </Circle>,
-        { width: SPRITE, height: SPRITE },
+        SPRITE_SIZE,
     );
 
     // Every instance samples the full sprite texture — static.
@@ -140,26 +151,29 @@ export function DustParticles({
         if (acc.value < STEP_MS) return;
         acc.value = 0;
 
-        const arr = particles.value;
-        for (let i = 0; i < arr.length; i++) {
-            const p = arr[i];
-            let nvx = p.vx + (Math.random() - 0.5) * DRIFT_JITTER;
-            let nvy = p.vy + (Math.random() - 0.5) * DRIFT_JITTER;
-            nvx = nvx < -MAX_SPEED ? -MAX_SPEED : nvx > MAX_SPEED ? MAX_SPEED : nvx;
-            nvy = nvy < -MAX_SPEED ? -MAX_SPEED : nvy > MAX_SPEED ? MAX_SPEED : nvy;
-            let nx = p.x + nvx;
-            let ny = p.y + nvy;
-            if (nx < 0) nx = width;
-            else if (nx > width) nx = 0;
-            if (ny < 0) ny = height;
-            else if (ny > height) ny = 0;
-            p.x = nx;
-            p.y = ny;
-            p.vx = nvx;
-            p.vy = nvy;
-        }
-        // New array reference so the Atlas buffers below recompute.
-        particles.value = arr.slice();
+        // Notify the Atlas buffers after the in-place update, without allocating
+        // a new 640-element array on every simulation step.
+        particles.modify((arr) => {
+            "worklet";
+            for (let i = 0; i < arr.length; i++) {
+                const p = arr[i];
+                let nvx = p.vx + (Math.random() - 0.5) * DRIFT_JITTER;
+                let nvy = p.vy + (Math.random() - 0.5) * DRIFT_JITTER;
+                nvx = nvx < -MAX_SPEED ? -MAX_SPEED : nvx > MAX_SPEED ? MAX_SPEED : nvx;
+                nvy = nvy < -MAX_SPEED ? -MAX_SPEED : nvy > MAX_SPEED ? MAX_SPEED : nvy;
+                let nx = p.x + nvx;
+                let ny = p.y + nvy;
+                if (nx < 0) nx = width;
+                else if (nx > width) nx = 0;
+                if (ny < 0) ny = height;
+                else if (ny > height) ny = 0;
+                p.x = nx;
+                p.y = ny;
+                p.vx = nvx;
+                p.vy = nvy;
+            }
+            return arr;
+        });
     }, false);
 
     // Pause the simulation when the screen isn't visible (other tab / backgrounded).
@@ -183,6 +197,24 @@ export function DustParticles({
         val.set(scale, 0, p.x - half, p.y - half);
     });
 
+    // Bounds only change with the structural light list, never on flicker or
+    // particle motion. Keep the source and bounds together for consistent reads.
+    const lightGeometry = useDerivedValue(() => {
+        return lightsShared.value.map((light) => {
+            let minX = Infinity;
+            let minY = Infinity;
+            let maxX = -Infinity;
+            let maxY = -Infinity;
+            for (let e = 0; e < light.emitters.length; e += 2) {
+                minX = Math.min(minX, light.emitters[e]);
+                maxX = Math.max(maxX, light.emitters[e]);
+                minY = Math.min(minY, light.emitters[e + 1]);
+                maxY = Math.max(maxY, light.emitters[e + 1]);
+            }
+            return { light, minX, minY, maxX, maxY };
+        });
+    });
+
     // ── Per-instance colour (neon tint + opacity from tube lighting) ──────────
     // Closeness is measured to the nearest EMITTER of each tube (never a center),
     // then run through a tight falloff curve: ~invisible until close, ramps, then
@@ -191,7 +223,7 @@ export function DustParticles({
     const colors = useColorBuffer(PARTICLE_COUNT, (val, i) => {
         "worklet";
         const p = particles.value[i];
-        const lights = lightsShared.value;
+        const geometry = lightGeometry.value;
         const intens = intensityShared.value;
         const scroll = scrollShared.value;
 
@@ -208,8 +240,25 @@ export function DustParticles({
         let bestAmt = 0; // dominant tube's curve-opacity (brightness-weighted)
         let bestC = 0; // dominant tube's distance closeness (drives white-hot blend)
 
-        for (let k = 0; k < lights.length; k++) {
-            const l = lights[k];
+        for (let k = 0; k < geometry.length; k++) {
+            const bounds = geometry[k];
+            const l = bounds.light;
+            const intensity = intens[l.id] ?? l.intensity;
+            if (intensity <= 0) continue;
+            // Use the live overdrive reach and the same scroll subtraction as
+            // the exact emitter search. Outside this box no emitter contributes.
+            const reach =
+                intensity <= 1
+                    ? DUST_REACH
+                    : DUST_REACH * (1 + (intensity - 1) * 0.4);
+            if (
+                p.x < bounds.minX - reach ||
+                p.x > bounds.maxX + reach ||
+                p.y < bounds.minY - scroll - reach ||
+                p.y > bounds.maxY - scroll + reach
+            ) {
+                continue;
+            }
             const em = l.emitters;
             // Nearest emitter of this tube (emitter Y is content-space → subtract scroll).
             let minD2 = Infinity;
@@ -219,13 +268,6 @@ export function DustParticles({
                 const d2 = dx * dx + dy * dy;
                 if (d2 < minD2) minD2 = d2;
             }
-            const intensity = intens[l.id] ?? l.intensity;
-            // Overdrive (>1) lets dust light up from further out (reach grows with
-            // power), matching the wall's extended falloff.
-            const reach =
-                intensity <= 1
-                    ? DUST_REACH
-                    : DUST_REACH * (1 + (intensity - 1) * 0.4);
             const c = 1 - Math.sqrt(minD2) / reach; // closeness 0..1
             if (c <= 0) continue;
             // Spatial falloff: flat <0.5, ramp to CURVE_MID by 0.9, spike to 1 at the tube.
@@ -303,4 +345,4 @@ export function DustParticles({
             </Group>
         </Canvas>
     );
-}
+});
