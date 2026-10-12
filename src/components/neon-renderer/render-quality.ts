@@ -1,8 +1,8 @@
 export type RenderQuality = "full" | "performance";
 
-// Temporary Android test default. Set false after device testing to restore full
-// quality everywhere; a future settings page can pass NeonRenderer's quality prop.
-export const ANDROID_PERFORMANCE_MODE = true;
+// Full quality is the default. Enable for Android testing; a future settings
+// page can select either preset through NeonRenderer's quality prop.
+export const ANDROID_PERFORMANCE_MODE = false;
 
 export const RENDER_QUALITY = {
     full: {
