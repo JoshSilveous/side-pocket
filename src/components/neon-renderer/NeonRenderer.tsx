@@ -49,6 +49,8 @@ type Props = {
    * and dust textures themselves stay fixed.
    */
   scrollOffset?: SharedValue<number>;
+  /** Fires once the wall is loaded and drawn (immediately if `background` is off). */
+  onReady?: () => void;
 };
 
 /**
@@ -77,6 +79,7 @@ export function NeonRenderer({
   particles = true,
   scrollOffset,
   quality = DEFAULT_QUALITY,
+  onReady,
 }: Props) {
   const preset = RENDER_QUALITY[quality];
   const containerRef = useAnimatedRef<View>();
@@ -176,6 +179,10 @@ export function NeonRenderer({
 
   const ready = size.width > 0 && size.height > 0;
 
+  useEffect(() => {
+    if (ready && !background) onReady?.();
+  }, [ready, background, onReady]);
+
   return (
     <NeonRendererContext.Provider value={contextValue}>
       <View ref={containerRef} style={styles.container} onLayout={onLayout}>
@@ -193,6 +200,7 @@ export function NeonRenderer({
             height={size.height}
             textures={wallTextures}
             tileCount={tileCount}
+            onReady={onReady}
           />
         )}
 

@@ -7,6 +7,7 @@ import {
     useImage,
     type DataSourceParam,
 } from "@shopify/react-native-skia";
+import { useEffect, useRef } from "react";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 
 import { resolveFrame } from "./frame-math";
@@ -83,6 +84,8 @@ type Props = {
      * Tune this to match the physical scale of your texture artwork. Default: 4
      */
     tileCount?: number;
+    /** Called once, after textures + shader are loaded and a frame has drawn. */
+    onReady?: () => void;
     /**
      * Z-depth of the neon light relative to the wall surface (pixels).
      * Higher = shallower lighting angle. Default: 220
@@ -104,6 +107,7 @@ export function BrickBackground({
     tileCount = 4,
     wallZ = 220,
     quality = "full",
+    onReady,
 }: Props) {
     "use no memo";
     // Keep shared-value reads on the UI thread under React Compiler.
@@ -220,6 +224,19 @@ export function BrickBackground({
             emitterColors,
         };
     }, [lighting, wallRenderScale, scaleX, imgW, imgH, wallZ]);
+
+    const loaded =
+        !!textureEffect &&
+        !!albedoImg &&
+        !!normalImg &&
+        (!wallSpecular || !!roughnessImg);
+    const readyFired = useRef(false);
+    useEffect(() => {
+        if (!loaded || readyFired.current) return;
+        readyFired.current = true;
+        // Two frames: one to mount the canvas, one for it to actually draw.
+        requestAnimationFrame(() => requestAnimationFrame(() => onReady?.()));
+    }, [loaded, onReady]);
 
     // Wait for the textures used by this shader variant.
     if (!textureEffect || !albedoImg || !normalImg || (wallSpecular && !roughnessImg)) {

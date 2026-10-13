@@ -84,6 +84,7 @@ assets/
 - Transitions are Reanimated-driven (native stack can't be tracked by the lights): each screen sits in a `LightFrame`; forward slides content left, back slides right; the wall stays put and light travels with its tubes. Left-edge swipe-back drives the same progress interactively. `gestureEnabled: false` in screen options disables it.
 - Screens below the top stay mounted but hidden (frame opacity 0 → no light, no wall emitter budget).
 - `useScreenTransition()` → `{ status: "active" | "entering" | "leaving" | "hidden", direction, progress }` — hook point for power-on animations as a screen slides in.
+- Launch: the native splash is the loader. `_layout` holds it (`preventAutoHideAsync`) until `NeonRenderer.onReady` (wall textures + shader loaded and drawn; 5s safety timeout), then fades it and flips `useAppReady()` to true. Intros (sign power-on, sizzle haptic, `companionPowerOn()` for buttons) start on that flag, never on mount.
 - Scrollable screens: wrap the ScrollView content in `<LightFrame scrollY={useScrollOffset(ref)}>`.
 
 ## NeonRenderer Architecture

@@ -127,6 +127,20 @@ function powerOnAnimation() {
     );
 }
 
+/**
+ * Power-on for a standalone tube (e.g. a button) that should come on *with* the
+ * sign: waits out the sign's false starts plus a random per-tube delay, then
+ * plays the same glitch. Assign to a brightness SharedValue that starts at 0.
+ */
+export function companionPowerOn() {
+    const leadMs = POWER_ON_RESTART_GAPS_MS.reduce((a, b) => a + b, 0);
+    const delay =
+        leadMs +
+        POWER_ON_MIN_DELAY_MS +
+        Math.random() * (POWER_ON_MAX_DELAY_MS - POWER_ON_MIN_DELAY_MS);
+    return withDelay(delay, powerOnAnimation());
+}
+
 // ── Worklet curves (UI thread) — used to blend overlapping tap ripples ──
 
 /** Piecewise-linear evaluation of GLITCH_KEYFRAMES at glitch-time `gt` (ms). */
