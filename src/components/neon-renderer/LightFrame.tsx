@@ -242,12 +242,28 @@ export function LightFrame({
   }));
 
   const [outerStyle, innerStyle] = useMemo(() => splitStyle(style), [style]);
+  // Only stretch the inner view when the outer has a set size. An auto-sized
+  // outer with a flexGrow child balloons to all available space (Yoga quirk).
+  const fills = useMemo(() => {
+    const o = outerStyle;
+    return (
+      o.height != null ||
+      o.minHeight != null ||
+      o.flex != null ||
+      o.flexGrow != null ||
+      o.flexBasis != null ||
+      (o.position === "absolute" && o.top != null && o.bottom != null)
+    );
+  }, [outerStyle]);
   const ctx = useMemo(() => ({ id, ref, world, size }), [id, ref, world, size]);
 
   return (
     <LightFrameContext.Provider value={ctx}>
       <View ref={outerRef} style={outerStyle} onLayout={handleLayout} {...rest}>
-        <Animated.View ref={ref} style={[styles.inner, innerStyle, animatedStyle]}>
+        <Animated.View
+          ref={ref}
+          style={[fills && styles.fill, innerStyle, animatedStyle]}
+        >
           {children}
         </Animated.View>
       </View>
@@ -256,5 +272,5 @@ export function LightFrame({
 }
 
 const styles = StyleSheet.create({
-  inner: { flexGrow: 1 },
+  fill: { flexGrow: 1 },
 });

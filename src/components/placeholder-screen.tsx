@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import NeonButton from "@/components/neon-button";
-import { hueToRgb, hueToWarmRgb, NeonLightSource, rgbToHex } from "@/components/neon-renderer";
+import { hueToRgb, hueToWarmRgb, rgbToHex } from "@/components/neon-renderer";
 import { NeonText } from "@/components/neon-text";
 
 const hex = ([r, g, b]: [number, number, number]) => rgbToHex(r, g, b);
@@ -28,15 +28,14 @@ export function PlaceholderScreen({
                     {title}
                 </NeonText>
                 {actions.map((a) => (
-                    <NeonLightSource key={a.label} hue={a.hue}>
-                        <NeonButton
-                            onPress={a.onPress}
-                            color={hex(hueToRgb(a.hue))}
-                            warmColor={hex(hueToWarmRgb(a.hue))}
-                        >
-                            {a.label}
-                        </NeonButton>
-                    </NeonLightSource>
+                    <NeonButton
+                        key={a.label}
+                        onPress={a.onPress}
+                        color={hex(hueToRgb(a.hue))}
+                        warmColor={hex(hueToWarmRgb(a.hue))}
+                    >
+                        {a.label}
+                    </NeonButton>
                 ))}
             </View>
         </SafeAreaView>

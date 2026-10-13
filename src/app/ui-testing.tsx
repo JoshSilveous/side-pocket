@@ -19,7 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NeonButton from "@/components/neon-button";
-import { LightFrame, NeonLightSource } from "@/components/neon-renderer";
+import { LightFrame } from "@/components/neon-renderer";
 import { NeonSlider } from "@/components/neon-slider";
 import { NeonText } from "@/components/neon-text";
 import { BottomTabInset, MaxContentWidth, Spacing } from "@/constants/theme";
@@ -235,11 +235,7 @@ export default function UITestingScreen() {
 
                     {/* ── Buttons ── */}
                     <View style={styles.buttonArea}>
-                        <NeonLightSource
-                            hue={hue1}
-                            brightness={effectiveBrightness1}
-                        >
-                            <NeonButton
+                        <NeonButton
                                 onPress={() => {}}
                                 color={neonColor1}
                                 warmColor={warmColor1}
@@ -247,13 +243,8 @@ export default function UITestingScreen() {
                             >
                                 Button One
                             </NeonButton>
-                        </NeonLightSource>
 
-                        <NeonLightSource
-                            hue={hue2}
-                            brightness={effectiveBrightness2}
-                        >
-                            <NeonButton
+                        <NeonButton
                                 onPress={() => {}}
                                 color={neonColor2}
                                 warmColor={warmColor2}
@@ -261,7 +252,6 @@ export default function UITestingScreen() {
                             >
                                 Button Two
                             </NeonButton>
-                        </NeonLightSource>
                     </View>
 
                     {/* ── Controls ── */}

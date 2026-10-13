@@ -8,6 +8,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useLightRegistration } from "./useLightRegistration";
+import { hexToRgb01 } from "../side-pocket/utils";
 import { hueToRgb } from "./utils";
 
 /** Spacing (px) between emitter points sampled along the tube path. */
@@ -52,8 +53,10 @@ function samplePathEmitters(path: SkPath): number[] {
 }
 
 type Props = ViewProps & {
-    /** Hue 0–360 — should match the NeonTube/NeonButton inside */
-    hue: number;
+    /** Hue 0–360 — should match the NeonTube inside. Ignored when `color` is set. */
+    hue?: number;
+    /** Exact light colour as hex (e.g. the tube's colour). Takes precedence over `hue`. */
+    color?: string;
     /**
      * Power (can exceed 1 for overdrive). Pass a SharedValue so flicker/press
      * updates the wall + dust on the UI thread without re-rendering. Default: 1
@@ -67,7 +70,8 @@ type Props = ViewProps & {
 
 /** Registers its child's tube outline as a wall/dust light. Frame-aware. */
 export function NeonLightSource({
-    hue,
+    hue = 0,
+    color,
     brightness = 1,
     tubePath,
     cornerRadius = DEFAULT_CORNER_RADIUS,
@@ -103,7 +107,7 @@ export function NeonLightSource({
     const { register } = useLightRegistration({
         viewRef,
         localEmitters,
-        rgb: hueToRgb(hue),
+        rgb: color ? hexToRgb01(color) : hueToRgb(hue),
         brightness: bv,
     });
 

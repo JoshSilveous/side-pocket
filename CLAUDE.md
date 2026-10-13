@@ -49,7 +49,7 @@ src/
     ui-testing.tsx              Dev sandbox for UI components
   components/
     neon-tube.tsx               Core neon glow path renderer (Skia)
-    neon-button.tsx             Button built on NeonTube
+    neon-button.tsx             Button built on NeonTube — self-lit (own LightFrame + NeonLightSource); don't wrap it in another NeonLightSource
     neon-slider.tsx             Slider with gradient track (Skia + Reanimated)
     neon-renderer/              Full-screen neon environment renderer
       NeonRenderer.tsx          Root provider — black bg, hosts canvas layers
@@ -110,7 +110,7 @@ A React context (`NeonRendererContext`) holds a registry of light sources. Any c
 
 **Frames (`LightFrame`) — lights follow moving tubes:**
 - `<LightFrame translateX translateY scale opacity>` is an Animated.View driven by SharedValues. The same values move the content AND its light, in the same UI frame, so glow never lags its tube. Frames nest (screen → wheel row → dragged chip). Translate + uniform scale only.
-- A frame renders a static outer View (size/position/margins) and a transformed inner Animated.View (children layout, padding, borders, background — split automatically). The frame's rest position is solved by measuring the outer view + parent origin in one UI tick; light positions likewise use measured scale (measured width ÷ layout width). Never mix `measure()` results with transform SharedValues — the value can be a frame ahead of the view (caused lights to land one screen-width off during stack transitions).
+- A frame renders a static outer View (size/position/margins) and a transformed inner Animated.View (children layout, padding, borders, background — split automatically). The inner view only gets `flexGrow: 1` when the outer has a set size (height/flex/absolute top+bottom); an auto-sized outer with a growing child balloons to all available space. The frame's rest position is solved by measuring the outer view + parent origin in one UI tick; light positions likewise use measured scale (measured width ÷ layout width). Never mix `measure()` results with transform SharedValues — the value can be a frame ahead of the view (caused lights to land one screen-width off during stack transitions).
 - Each frame publishes a live world transform `{ox, oy, s, a}` (screen = o + s·local) into `framesShared`. Frame opacity multiplies light power; frame scale shrinks glow reach.
 - Lights store emitters in their nearest frame's **local, untransformed** coords (`frameId` on `LightSource`; `ROOT_FRAME` = no frame, where root maps `oy = -scroll`). Wall + dust map them through `resolveFrame()` every frame.
 - Use frame `opacity` to make something visually disappear (transparent glass too). To power a tube off, drop its `brightness` — cold glass stays.

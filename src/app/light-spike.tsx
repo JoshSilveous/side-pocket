@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import NeonButton from "@/components/neon-button";
-import { LightFrame, NeonLightSource } from "@/components/neon-renderer";
+import { LightFrame } from "@/components/neon-renderer";
 import { NeonText } from "@/components/neon-text";
 
 /** Dev bench for LightFrame: wall glow + dust must stay locked to the tubes. */
@@ -134,11 +134,9 @@ export default function LightSpike() {
                         style={styles.frame}
                     >
                         <View key={mountKey} style={styles.frameInner}>
-                            <NeonLightSource hue={0}>
-                                <NeonButton onPress={() => {}} haptics={false}>
+                            <NeonButton onPress={() => {}} haptics={false}>
                                     Follow Me
                                 </NeonButton>
-                            </NeonLightSource>
                             <LightFrame scale={innerS} opacity={innerA}>
                                 <NeonText
                                     fontSize={30}

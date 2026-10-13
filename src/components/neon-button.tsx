@@ -11,6 +11,7 @@ import {
 } from "react-native-reanimated";
 
 import SidePocketHaptics from "../../modules/side-pocket-haptics";
+import { LightFrame, NeonLightSource } from "./neon-renderer";
 import { NeonText } from "./neon-text";
 import { NeonTube } from "./neon-tube";
 
@@ -47,9 +48,11 @@ const HOLD_SHARPNESS = 0.3; // low buzz while held
 const RELEASE_INTENSITY = 1;
 const RELEASE_SHARPNESS = 0.15; // hard + dull
 
-// ── Press visual — overdrive past 100% + burn-out flicker while held ──
-const PRESS_OVERDRIVE = 1.5; // brief tap-down surge peak (punchy)
-const HOLD_OVERDRIVE = 1.2; // sustained hold-flicker peak (gentler than the tap)
+// ── Press visual — shrink on press, burn-out flicker while held ──
+const PRESS_SCALE = 0.94;
+const PRESS_IN_MS = 90;
+const PRESS_OUT_MS = 160;
+const HOLD_OVERDRIVE = 1.2; // hold-flicker peak
 const HOLD_THRESHOLD_MS = 180; // held longer than this = "hold"; shorter = a tap
 
 function buildRoundedRectPath(w: number, h: number, r: number): string {
@@ -90,6 +93,7 @@ export default function NeonButton(props: {
     // Press boost multiplies whatever brightness we're given (so it composes with an
     // externally-driven brightness), letting the press surge it past 100%.
     const pressBoost = useSharedValue(1);
+    const pressScale = useSharedValue(1);
     const effectiveBrightness = useDerivedValue(
         () => brightness.value * pressBoost.value,
     );
@@ -113,101 +117,111 @@ export default function NeonButton(props: {
             ? buildRoundedRectPath(size.width, size.height, BORDER_RADIUS)
             : "";
 
+    // The button owns its light, inside a LightFrame, so the wall glow shrinks
+    // with the press and flickers with the hold.
     return (
-        <Pressable
-            onPress={onPress}
-            onPressIn={() => {
-                // Tap-down: a single crisp tick + one overdrive surge. This is the
-                // whole event for a quick tap; if still held past the threshold we
-                // escalate to the hold behavior below.
-                cancelAnimation(pressBoost);
-                pressBoost.value = withTiming(PRESS_OVERDRIVE, {
-                    duration: 55,
-                });
-                if (haptics) {
-                    SidePocketHaptics.playTransient(
-                        PRESS_INTENSITY,
-                        PRESS_SHARPNESS,
-                    );
-                }
-
-                isHolding.current = false;
-                holdTimer.current = setTimeout(() => {
-                    // Held: low buzz + burn-out flicker.
-                    isHolding.current = true;
-                    if (haptics) {
-                        SidePocketHaptics.startContinuous(
-                            HOLD_INTENSITY,
-                            HOLD_SHARPNESS,
-                        );
-                    }
-                    pressBoost.value = withRepeat(
-                        withSequence(
-                            withTiming(HOLD_OVERDRIVE, { duration: 55 }),
-                            withTiming(1.15, { duration: 45 }),
-                            withTiming(HOLD_OVERDRIVE - 0.1, { duration: 40 }),
-                            withTiming(0.85, { duration: 35 }), // flicker blink
-                            withTiming(1.3, { duration: 60 }),
-                        ),
-                        -1,
-                        false,
-                    );
-                }, HOLD_THRESHOLD_MS);
-            }}
-            onPressOut={() => {
-                if (holdTimer.current) {
-                    clearTimeout(holdTimer.current);
-                    holdTimer.current = null;
-                }
-                // Settle the glow back to resting brightness (ends the tap blip or
-                // the hold flicker).
-                cancelAnimation(pressBoost);
-                pressBoost.value = withTiming(1, { duration: 180 });
-                // Only a sustained hold gets the stop-buzz + dull release; a quick tap
-                // already fired its single tick on press-down.
-                if (isHolding.current) {
-                    isHolding.current = false;
-                    if (haptics) {
-                        SidePocketHaptics.stopContinuous();
-                        SidePocketHaptics.playTransient(
-                            RELEASE_INTENSITY,
-                            RELEASE_SHARPNESS,
-                        );
-                    }
-                }
-            }}
-            onLayout={(e) => {
-                const { width, height } = e.nativeEvent.layout;
-                setSize({ width, height });
-            }}
-            style={styles.button}
-        >
-            {size.width > 0 && (
-                <NeonTube
-                    path={path}
-                    width={size.width}
-                    height={size.height}
-                    color={color}
-                    warmColor={warmColor}
-                    tubeWidth={TUBE_WIDTH}
-                    glow={GLOW}
-                    brightness={effectiveBrightness}
-                    innerGlow={false}
-                    glowPadding={GLOW_PADDING}
-                />
-            )}
-            {/* Label shares the button's brightness so it powers on / flickers
-                with the tube, and glows in the same colour. */}
-            <NeonText
-                fontSize={FONT_SIZE}
+        <LightFrame scale={pressScale}>
+            <NeonLightSource
                 color={color}
-                warmColor={warmColor}
-                glow={GLOW}
                 brightness={effectiveBrightness}
+                cornerRadius={BORDER_RADIUS}
             >
-                {children}
-            </NeonText>
-        </Pressable>
+                <Pressable
+                    onPress={onPress}
+                    onPressIn={() => {
+                        // Tap-down: shrink + one crisp tick. If still held past the
+                        // threshold we escalate to the hold flicker below.
+                        cancelAnimation(pressScale);
+                        pressScale.value = withTiming(PRESS_SCALE, {
+                            duration: PRESS_IN_MS,
+                        });
+                        if (haptics) {
+                            SidePocketHaptics.playTransient(
+                                PRESS_INTENSITY,
+                                PRESS_SHARPNESS,
+                            );
+                        }
+
+                        isHolding.current = false;
+                        holdTimer.current = setTimeout(() => {
+                            // Held: low buzz + burn-out flicker.
+                            isHolding.current = true;
+                            if (haptics) {
+                                SidePocketHaptics.startContinuous(
+                                    HOLD_INTENSITY,
+                                    HOLD_SHARPNESS,
+                                );
+                            }
+                            pressBoost.value = withRepeat(
+                                withSequence(
+                                    withTiming(HOLD_OVERDRIVE, { duration: 55 }),
+                                    withTiming(1.15, { duration: 45 }),
+                                    withTiming(HOLD_OVERDRIVE - 0.1, { duration: 40 }),
+                                    withTiming(0.85, { duration: 35 }), // flicker blink
+                                    withTiming(1.3, { duration: 60 }),
+                                ),
+                                -1,
+                                false,
+                            );
+                        }, HOLD_THRESHOLD_MS);
+                    }}
+                    onPressOut={() => {
+                        if (holdTimer.current) {
+                            clearTimeout(holdTimer.current);
+                            holdTimer.current = null;
+                        }
+                        // Spring back to size and end any hold flicker.
+                        cancelAnimation(pressScale);
+                        pressScale.value = withTiming(1, { duration: PRESS_OUT_MS });
+                        cancelAnimation(pressBoost);
+                        pressBoost.value = withTiming(1, { duration: 180 });
+                        // Only a sustained hold gets the stop-buzz + dull release; a quick tap
+                        // already fired its single tick on press-down.
+                        if (isHolding.current) {
+                            isHolding.current = false;
+                            if (haptics) {
+                                SidePocketHaptics.stopContinuous();
+                                SidePocketHaptics.playTransient(
+                                    RELEASE_INTENSITY,
+                                    RELEASE_SHARPNESS,
+                                );
+                            }
+                        }
+                    }}
+                    onLayout={(e) => {
+                        const { width, height } = e.nativeEvent.layout;
+                        setSize({ width, height });
+                    }}
+                    style={styles.button}
+                >
+                    {size.width > 0 && (
+                        <NeonTube
+                            path={path}
+                            width={size.width}
+                            height={size.height}
+                            color={color}
+                            warmColor={warmColor}
+                            tubeWidth={TUBE_WIDTH}
+                            glow={GLOW}
+                            brightness={effectiveBrightness}
+                            innerGlow={false}
+                            glowPadding={GLOW_PADDING}
+                        />
+                    )}
+                    {/* Label shares the button's brightness so it powers on / flickers
+                        with the tube, and glows in the same colour. */}
+                    <NeonText
+                        fontSize={FONT_SIZE}
+                        color={color}
+                        warmColor={warmColor}
+                        glow={GLOW}
+                        brightness={effectiveBrightness}
+                    >
+                        {children}
+                    </NeonText>
+                </Pressable>
+            </NeonLightSource>
+        </LightFrame>
     );
 }
 
