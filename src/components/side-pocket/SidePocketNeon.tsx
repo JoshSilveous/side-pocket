@@ -14,6 +14,7 @@ import {
     makeMutable,
     runOnJS,
     runOnUI,
+    useAnimatedRef,
     useFrameCallback,
     useSharedValue,
     withDelay,
@@ -23,7 +24,6 @@ import {
 } from "react-native-reanimated";
 
 import { splashArt } from "@/generated/splash-paths";
-import { useNeonRenderer } from "../neon-renderer/NeonRendererContext";
 import { ColdTubes } from "./ColdTubes";
 import { PathLight } from "./PathLight";
 import { PathTube } from "./PathTube";
@@ -240,14 +240,8 @@ export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
         },
         ref,
     ) {
-        const renderer = useNeonRenderer();
-        const rendererRef = useRef(renderer);
-        rendererRef.current = renderer;
-        const viewRef = useRef<View>(null);
+        const viewRef = useAnimatedRef<View>();
         const restartTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-        const [origin, setOrigin] = useState<{ x: number; y: number } | null>(
-            null,
-        );
 
         const scale = width / SIGN.viewBox.width;
         const signW = SIGN.viewBox.width * scale;
@@ -527,40 +521,15 @@ export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
             if (haptics) SidePocketHaptics.prepare().catch(() => {});
         }, [haptics]);
 
-        // Measure the sign's position so each tube's light emitters land on its
-        // tubes. rendererRef keeps the native measurement callback stable while
-        // reading the latest renderer.
-        const measure = useCallback(() => {
-            const rdr = rendererRef.current;
-            const v = viewRef.current;
-            if (!rdr || !v) return;
-            const container = rdr.containerRef.current;
-            if (!container) return;
-            v.measure((_, __, w, h, pageX, pageY) => {
-                if (w === 0 && h === 0) return;
-                container.measure((___, ____, _cw, _ch, cPageX, cPageY) => {
-                    const nx = pageX - cPageX;
-                    const ny = pageY - cPageY;
-                    setOrigin((prev) =>
-                        prev && prev.x === nx && prev.y === ny
-                            ? prev
-                            : { x: nx, y: ny },
-                    );
-                });
-            });
-        }, []);
-
-        // Drawn content origin = View top-left + glow pad. Memoised so PathLight's
-        // effect doesn't re-fire (and re-register) on every render.
-        const lightOrigin = useMemo(
-            () => (origin ? { x: origin.x + PAD, y: origin.y + PAD } : null),
-            [origin],
-        );
+        // Lights measure themselves relative to this view; bumping the key on
+        // layout makes them re-register when the sign moves.
+        const [layoutKey, setLayoutKey] = useState(0);
+        const onSignLayout = useCallback(() => setLayoutKey((k) => k + 1), []);
 
         return (
             <Pressable
                 ref={viewRef}
-                onLayout={measure}
+                onLayout={onSignLayout}
                 onPress={
                     // locationX/Y are relative to this Pressable (includes the glow
                     // PAD). handleTap strips the pad, hit-tests against the tubes, and
@@ -610,10 +579,12 @@ export const SidePocketNeon = forwardRef<SidePocketNeonHandle, Props>(
                     <PathLight
                         key={`light-${i}`}
                         skPath={p}
-                        origin={lightOrigin}
+                        anchorRef={viewRef}
+                        contentPad={PAD}
+                        layoutKey={layoutKey}
                         color={colors[i]}
                         brightness={brightness[i]}
-                        enabled
+                        enabled={layoutKey > 0}
                     />
                 ))}
             </Pressable>

@@ -21,6 +21,7 @@ import { useRouter, type Href } from "expo-router";
 const DEV_ROUTES: { label: string; path: Href }[] = [
     { label: "UI Testing", path: "/ui-testing" },
     { label: "Splash Animation", path: "/splash-animation" },
+    { label: "Light Spike", path: "/light-spike" },
 ];
 
 export function DevMenu({ children }: { children: ReactNode }) {

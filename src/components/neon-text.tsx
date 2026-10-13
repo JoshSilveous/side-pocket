@@ -6,17 +6,17 @@ import {
     useFont,
 } from "@shopify/react-native-skia";
 import { TiltNeon_400Regular } from "@expo-google-fonts/tilt-neon";
-import { useCallback, useEffect, useId, useMemo, useRef } from "react";
-import { StyleSheet, View } from "react-native";
+import { useEffect, useMemo } from "react";
+import { StyleSheet, type View } from "react-native";
 import Animated, {
-    useAnimatedReaction,
+    useAnimatedRef,
     useAnimatedStyle,
     useDerivedValue,
     useSharedValue,
     type SharedValue,
 } from "react-native-reanimated";
 
-import { useNeonRenderer } from "./neon-renderer/NeonRendererContext";
+import { useLightRegistration } from "./neon-renderer/useLightRegistration";
 import { hexToRgb01 } from "./side-pocket/utils";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -88,12 +88,7 @@ export function NeonText({
     glowPadding = 32,
     emitLight = true,
 }: NeonTextProps) {
-    const id = useId();
-    const renderer = useNeonRenderer();
-    // Keep native measurement callbacks stable while reading the latest renderer.
-    const rendererRef = useRef(renderer);
-    rendererRef.current = renderer;
-    const viewRef = useRef<View>(null);
+    const viewRef = useAnimatedRef<View>();
 
     const font = useFont(TiltNeon_400Regular, fontSize);
 
@@ -167,78 +162,13 @@ export function NeonText({
     }, [font, text, pad]);
 
     // ── Light registration (brick + dust react to the text) ──
-    const [lr, lg, lb] = hexToRgb01(color);
-    const lightParams = useRef({ r: lr, g: lg, b: lb });
-    lightParams.current = { r: lr, g: lg, b: lb };
-
-    const measureAndRegister = useCallback(() => {
-        const rdr = rendererRef.current;
-        if (!emitLight || !rdr || !viewRef.current || !layout) return;
-        const container = rdr.containerRef.current;
-        if (!container) return;
-        const local = layout.localEmitters;
-        if (local.length === 0) return;
-
-        viewRef.current.measure((_, __, w, h, pageX, pageY) => {
-            if (w === 0 && h === 0) return;
-            container.measure((___, ____, _cw, _ch, cPageX, cPageY) => {
-                // View top-left in container coords. Emitters are in View coords
-                // (natural text box, no glow padding), so just offset by the corner.
-                const offX = pageX - cPageX;
-                const offY = pageY - cPageY;
-                const scrollY = rdr.scrollShared.value;
-                const emitters: number[] = [];
-                for (let i = 0; i < local.length; i += 2) {
-                    emitters.push(offX + local[i], offY + local[i + 1] + scrollY);
-                }
-                const lp = lightParams.current;
-                rdr.registerLight({
-                    id,
-                    emitters,
-                    r: lp.r,
-                    g: lp.g,
-                    b: lp.b,
-                    // Power can exceed 1 (overdrive). The brick shader tone-maps and
-                    // the dust clamps its own alpha, so >1 is safe and reads brighter.
-                    intensity: bv.value,
-                });
-            });
-        });
-    }, [emitLight, layout, id, bv]);
-
-    // Register on mount + whenever the geometry changes.
-    useEffect(() => {
-        measureAndRegister();
-    }, [measureAndRegister]);
-
-    // Colour change → update without re-measuring.
-    useEffect(() => {
-        if (emitLight)
-            rendererRef.current?.updateLight(id, { r: lr, g: lg, b: lb });
-    }, [emitLight, id, lr, lg, lb]);
-
-    // Live brightness/flicker → intensityShared on the UI thread (no re-render).
-    const intensityShared = renderer?.intensityShared ?? null;
-    useAnimatedReaction(
-        () => bv.value,
-        (v) => {
-            "worklet";
-            if (!intensityShared) return;
-            intensityShared.modify((intensities) => {
-                "worklet";
-                intensities[id] = v < 0 ? 0 : v; // power can exceed 1 (overdrive); floor at 0
-                return intensities;
-            });
-        },
-        [id, intensityShared],
-    );
-
-    useEffect(() => {
-        return () => {
-            rendererRef.current?.unregisterLight(id);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    const { register } = useLightRegistration({
+        viewRef,
+        localEmitters: layout?.localEmitters ?? null,
+        rgb: hexToRgb01(color),
+        brightness: bv,
+        enabled: emitLight,
+    });
 
     // ── Visual glow ──
     // Opacity carries the 0→100% fade-in; bloom reach (below) carries intensity past
@@ -286,11 +216,11 @@ export function NeonText({
     const hotBlur = fontSize * HOT_BLUR * glow;
 
     return (
-        <View
+        <Animated.View
             ref={viewRef}
             pointerEvents="none"
             style={posStyle}
-            onLayout={measureAndRegister}
+            onLayout={register}
         >
             {/* ── Cold text: always visible, no brightness control (unlit glass) ── */}
             <Canvas style={canvasStyle}>
@@ -393,6 +323,6 @@ export function NeonText({
                     </Group>
                 </Canvas>
             </Animated.View>
-        </View>
+        </Animated.View>
     );
 }

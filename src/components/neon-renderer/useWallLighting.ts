@@ -8,12 +8,13 @@ import {
     type SharedValue,
 } from "react-native-reanimated";
 
-import type { LightSource } from "./types";
+import type { FrameWorld, LightSource } from "./types";
 
 type WallLighting = {
     lights: LightSource[];
     intensities: Record<string, number>;
     scroll: number;
+    frames: Record<string, FrameWorld>;
 };
 
 /** Sample before building wall uniforms so both CPU assembly and GPU draws slow
@@ -22,6 +23,8 @@ export function useWallLighting(
     lightsShared: SharedValue<LightSource[]>,
     intensityShared: SharedValue<Record<string, number>>,
     scrollShared: SharedValue<number>,
+    framesShared: SharedValue<Record<string, FrameWorld>>,
+    framesVersion: SharedValue<number>,
     fps: number,
 ): SharedValue<WallLighting> {
     "use no memo";
@@ -30,8 +33,16 @@ export function useWallLighting(
         lights: lightsShared.value,
         intensities: intensityShared.value,
         scroll: scrollShared.value,
+        frames: framesShared.value,
+        version: framesVersion.value,
     }));
-    const sampled = useSharedValue<WallLighting>({ lights: [], intensities: {}, scroll: 0 });
+    const sampled = useSharedValue<WallLighting>({
+        lights: [],
+        intensities: {},
+        scroll: 0,
+        frames: {},
+    });
+    const lastVersion = useSharedValue(-1);
     const previous = useSharedValue<WallLighting | null>(null);
     const lastSampleTime = useSharedValue(-1);
 
@@ -40,7 +51,11 @@ export function useWallLighting(
         if (fps <= 0) return;
         const latest = live.value;
         if (latest === previous.value) return;
+        // Moving frames bypass the cap: a throttled wall would visibly trail
+        // its tubes during a slide. The cap only saves power while things sit still.
+        const moving = latest.version !== lastVersion.value;
         if (
+            !moving &&
             lastSampleTime.value >= 0 &&
             info.timestamp - lastSampleTime.value + 0.001 < 1000 / fps
         ) return;
@@ -51,7 +66,9 @@ export function useWallLighting(
             lights: latest.lights,
             intensities: { ...latest.intensities },
             scroll: latest.scroll,
+            frames: { ...latest.frames },
         };
+        lastVersion.value = latest.version;
         previous.value = latest;
         lastSampleTime.value = info.timestamp;
     }, false);
@@ -73,5 +90,5 @@ export function useWallLighting(
 
     // The downstream uniform worklet captures only this selected buffer. Reading
     // raw inputs in it would subscribe it to every update even in performance mode.
-    return fps > 0 ? sampled : live;
+    return (fps > 0 ? sampled : live) as SharedValue<WallLighting>;
 }

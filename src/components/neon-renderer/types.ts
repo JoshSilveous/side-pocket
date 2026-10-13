@@ -1,15 +1,18 @@
-import type { RefObject } from "react";
 import type { View } from "react-native";
-import type { SharedValue } from "react-native-reanimated";
+import type { AnimatedRef, SharedValue } from "react-native-reanimated";
+
+/** Frame id for lights that aren't inside any <LightFrame> (scroll-only space). */
+export const ROOT_FRAME = "root";
 
 export type LightSource = {
   id: string;
+  /** The <LightFrame> these emitters live in (ROOT_FRAME when none). */
+  frameId: string;
   /**
-   * Emitter points sampled along the tube path, flattened as
-   * `[x0, y0, x1, y1, …]` in **content (pre-scroll) coordinates**.
-   * Light emanates from these points — never from a center/centroid — so a hollow
-   * shape stays dark in its middle and the model works for any tube path.
-   * Consumers subtract the live scroll offset to get on-screen positions.
+   * Emitter points sampled along the tube path, flattened as `[x0, y0, x1, y1, …]`
+   * in the owning frame's **local, untransformed** coordinates. Light emanates from
+   * these points — never a centroid — so hollow shapes stay dark in the middle.
+   * Consumers map them to screen space with the frame's live world transform.
    */
   emitters: number[];
   /** Red channel 0–1 */
@@ -18,33 +21,38 @@ export type LightSource = {
   g: number;
   /** Blue channel 0–1 */
   b: number;
-  /** Overall intensity 0–1 — the *registered* value. Live intensity (flicker/slider) lives in `intensityShared`. */
+  /** Registered power. Live power (flicker/slider) lives in `intensityShared`. */
   intensity: number;
 };
 
+/**
+ * Live local → screen mapping of a <LightFrame>: `screen = (ox, oy) + s * local`.
+ * `a` is the frame's accumulated opacity (multiplies light power). `ready` is
+ * false until the frame has been measured once.
+ */
+export type FrameWorld = {
+  ox: number;
+  oy: number;
+  s: number;
+  a: number;
+  ready: boolean;
+};
+
 export type NeonRendererContextValue = {
-  /** Ref to the NeonRenderer's root View — used by children for measureLayout */
-  containerRef: RefObject<View | null>;
+  /** Animated ref to the renderer's root View — the origin of screen space. */
+  containerRef: AnimatedRef<View>;
   registerLight: (source: LightSource) => void;
-  /** Update only colour on an existing light — skips native measure(), much faster */
+  /** Update only colour on an existing light — skips re-measuring. */
   updateLight: (id: string, updates: Pick<LightSource, "r" | "g" | "b">) => void;
   unregisterLight: (id: string) => void;
-  /**
-   * Reanimated mirror of the structural light list (position/colour/radius).
-   * Consumed by UI-thread worklets (dust + brick) so lighting updates without a
-   * React re-render. Written from JS whenever the React `lights` state changes.
-   */
+  /** UI-thread mirror of the structural light list (geometry + colour). */
   lightsShared: SharedValue<LightSource[]>;
-  /**
-   * Per-light *live* intensity keyed by light id. Written on the UI thread from a
-   * brightness SharedValue (flicker/slider) so brightness never round-trips through
-   * React. Consumers fall back to `LightSource.intensity` when an id is absent.
-   */
+  /** Live power per light id, written on the UI thread (flicker/slider/press). */
   intensityShared: SharedValue<Record<string, number>>;
-  /**
-   * Live vertical scroll offset (px). Emitters are stored in content coordinates;
-   * consumers subtract this to track buttons as they scroll, while the brick + dust
-   * *textures* stay fixed.
-   */
+  /** Live vertical scroll of root-space content (px). */
   scrollShared: SharedValue<number>;
+  /** Live world transform per <LightFrame> id. Mutated in place. */
+  framesShared: SharedValue<Record<string, FrameWorld>>;
+  /** Bumped whenever any frame moves — lets throttled consumers skip their cap. */
+  framesVersion: SharedValue<number>;
 };

@@ -2,17 +2,16 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { Platform, StyleSheet, View, type LayoutChangeEvent } from "react-native";
-import { useSharedValue, type SharedValue } from "react-native-reanimated";
+import { useAnimatedRef, useSharedValue, type SharedValue } from "react-native-reanimated";
 
 import { BrickBackground, type WallTextures } from "./BrickBackground";
 import { DustParticles } from "./DustParticles";
 import { NeonRendererContext } from "./NeonRendererContext";
-import type { LightSource } from "./types";
+import type { FrameWorld, LightSource } from "./types";
 import { ANDROID_PERFORMANCE_MODE, RENDER_QUALITY, type RenderQuality } from "./render-quality";
 
 const DEFAULT_QUALITY: RenderQuality =
@@ -80,7 +79,7 @@ export function NeonRenderer({
   quality = DEFAULT_QUALITY,
 }: Props) {
   const preset = RENDER_QUALITY[quality];
-  const containerRef = useRef<View>(null);
+  const containerRef = useAnimatedRef<View>();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [lights, setLights] = useState<LightSource[]>([]);
 
@@ -89,6 +88,8 @@ export function NeonRenderer({
   // (emitter geometry + colour); `intensityShared` carries live brightness per id.
   const lightsShared = useSharedValue<LightSource[]>([]);
   const intensityShared = useSharedValue<Record<string, number>>({});
+  const framesShared = useSharedValue<Record<string, FrameWorld>>({});
+  const framesVersion = useSharedValue(0);
 
   // Scroll offset: use the caller's SharedValue if provided, else a static 0.
   const internalScroll = useSharedValue(0);
@@ -157,8 +158,20 @@ export function NeonRenderer({
       lightsShared,
       intensityShared,
       scrollShared,
+      framesShared,
+      framesVersion,
     }),
-    [registerLight, updateLight, unregisterLight, lightsShared, intensityShared, scrollShared]
+    [
+      containerRef,
+      registerLight,
+      updateLight,
+      unregisterLight,
+      lightsShared,
+      intensityShared,
+      scrollShared,
+      framesShared,
+      framesVersion,
+    ]
   );
 
   const ready = size.width > 0 && size.height > 0;
@@ -174,6 +187,8 @@ export function NeonRenderer({
             lightsShared={lightsShared}
             intensityShared={intensityShared}
             scrollShared={scrollShared}
+            framesShared={framesShared}
+            framesVersion={framesVersion}
             width={size.width}
             height={size.height}
             textures={wallTextures}
@@ -192,6 +207,7 @@ export function NeonRenderer({
             lightsShared={lightsShared}
             intensityShared={intensityShared}
             scrollShared={scrollShared}
+            framesShared={framesShared}
             width={size.width}
             height={size.height}
           />

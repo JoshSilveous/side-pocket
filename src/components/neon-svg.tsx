@@ -6,17 +6,17 @@ import {
     Path,
     Skia,
 } from "@shopify/react-native-skia";
-import { useCallback, useEffect, useId, useMemo, useRef } from "react";
-import { StyleSheet, View } from "react-native";
+import { useEffect, useMemo } from "react";
+import { StyleSheet, type View } from "react-native";
 import Animated, {
     SharedValue,
-    useAnimatedReaction,
+    useAnimatedRef,
     useAnimatedStyle,
     useDerivedValue,
     useSharedValue,
 } from "react-native-reanimated";
 
-import { useNeonRenderer } from "./neon-renderer/NeonRendererContext";
+import { useLightRegistration } from "./neon-renderer/useLightRegistration";
 
 /** Bloom reach multiplier cap — brightness drives bloom blur up to this (overdrive
  *  past 100% = wider reach). Keep in sync with neon-tube's BLOOM_REACH_MAX. */
@@ -68,14 +68,13 @@ function hexToRgb01(hex: string): [number, number, number] {
 
 /**
  * Walk every contour of `path` by arc length, emitting evenly-spaced points into a
- * flat [x0,y0,x1,y1,...] array, offset into content coordinates (local point + box
- * offset + scroll). Spacing widens automatically to stay under `maxPoints`.
+ * flat [x0,y0,x1,y1,...] array, offset by the glow padding into view-local px.
+ * Spacing widens automatically to stay under `maxPoints`.
  */
 function sampleEmitters(
     path: ReturnType<typeof Skia.Path.Make>,
     offsetX: number,
     offsetY: number,
-    scrollY: number,
     maxPoints: number,
 ): number[] {
     // First pass: total length, so we can pick a spacing that bounds the count.
@@ -97,7 +96,7 @@ function sampleEmitters(
         const steps = Math.max(1, Math.round(len / spacing));
         for (let s = 0; s < steps; s++) {
             const [pos] = contour.getPosTan((s / steps) * len);
-            out.push(offsetX + pos.x, offsetY + pos.y + scrollY);
+            out.push(offsetX + pos.x, offsetY + pos.y);
         }
         contour = iter.next();
     }
@@ -133,12 +132,7 @@ export function NeonSVG({
     glowPadding = 40,
     emitLight = true,
 }: NeonSVGProps) {
-    const id = useId();
-    const renderer = useNeonRenderer();
-    // Keep native measurement callbacks stable while reading the latest renderer.
-    const rendererRef = useRef(renderer);
-    rendererRef.current = renderer;
-    const viewRef = useRef<View>(null);
+    const viewRef = useAnimatedRef<View>();
 
     const staticBrightness = useSharedValue(
         typeof brightness === "number" ? brightness : 1,
@@ -171,78 +165,18 @@ export function NeonSVG({
     }, [paths, scale]);
 
     // ── Light registration (brick + dust react to the sign) ───────────────────
-    const [lr, lg, lb] = hexToRgb01(color);
-    const lightParams = useRef({ r: lr, g: lg, b: lb });
-    lightParams.current = { r: lr, g: lg, b: lb };
-
-    const measureAndRegister = useCallback(() => {
-        const rdr = rendererRef.current;
-        if (!emitLight || !rdr || !viewRef.current) return;
-        const container = rdr.containerRef.current;
-        if (!container) return;
-
-        viewRef.current.measure((_, __, w, h, pageX, pageY) => {
-            if (w === 0 && h === 0) return;
-            container.measure((___, ____, _cw, _ch, cPageX, cPageY) => {
-                // Art is drawn offset by glowPadding inside this view, so emitters
-                // must include that offset to sit on the actual glowing tubes.
-                const offX = pageX - cPageX + glowPadding;
-                const offY = pageY - cPageY + glowPadding;
-                const emitters = sampleEmitters(
-                    skPath,
-                    offX,
-                    offY,
-                    rdr.scrollShared.value,
-                    MAX_LIGHT_EMITTERS,
-                );
-                if (emitters.length === 0) return;
-                const lp = lightParams.current;
-                rdr.registerLight({
-                    id,
-                    emitters,
-                    r: lp.r,
-                    g: lp.g,
-                    b: lp.b,
-                    intensity: bv.value,
-                });
-            });
-        });
-    }, [emitLight, skPath, glowPadding, id, bv]);
-
-    // Register on mount + whenever the geometry changes.
-    useEffect(() => {
-        measureAndRegister();
-    }, [measureAndRegister]);
-
-    // Colour change → update without re-measuring.
-    useEffect(() => {
-        if (emitLight)
-            rendererRef.current?.updateLight(id, { r: lr, g: lg, b: lb });
-    }, [emitLight, id, lr, lg, lb]);
-
-    // Live brightness/flicker → intensityShared on the UI thread (no re-render).
-    // The SharedValue instance is stable across structural light updates.
-    const intensityShared = renderer?.intensityShared ?? null;
-    useAnimatedReaction(
-        () => bv.value,
-        (v) => {
-            "worklet";
-            if (!intensityShared) return;
-            intensityShared.modify((intensities) => {
-                "worklet";
-                intensities[id] = v;
-                return intensities;
-            });
-        },
-        [id, intensityShared],
+    // Art is drawn offset by glowPadding inside the view, so emitters are too.
+    const localEmitters = useMemo(
+        () => sampleEmitters(skPath, glowPadding, glowPadding, MAX_LIGHT_EMITTERS),
+        [skPath, glowPadding],
     );
-
-    useEffect(() => {
-        return () => {
-            rendererRef.current?.unregisterLight(id);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    const { register } = useLightRegistration({
+        viewRef,
+        localEmitters,
+        rgb: hexToRgb01(color),
+        brightness: bv,
+        enabled: emitLight,
+    });
 
     // ── Visual glow ───────────────────────────────────────────────────────────
     // Opacity carries the 0→100% fade; bloom reach (below) carries intensity past
@@ -271,11 +205,11 @@ export function NeonSVG({
     const hotBlur = tubeWidth * 0.15;
 
     return (
-        <View
+        <Animated.View
             ref={viewRef}
             pointerEvents="none"
             style={posStyle}
-            onLayout={measureAndRegister}
+            onLayout={register}
         >
             {/* ── Cold tube: always visible, no brightness control ── */}
             <Canvas
@@ -404,6 +338,6 @@ export function NeonSVG({
                     </Group>
                 </Canvas>
             </Animated.View>
-        </View>
+        </Animated.View>
     );
 }

@@ -54,6 +54,9 @@ src/
     neon-renderer/              Full-screen neon environment renderer
       NeonRenderer.tsx          Root provider — black bg, hosts canvas layers
       NeonLightSource.tsx       Wrapper that registers a component as a light
+      LightFrame.tsx            Moving container whose lights move with it
+      useLightRegistration.ts   Shared light registration hook (frame-aware)
+      frame-math.ts             resolveFrame() worklet used by wall + dust
       BrickBackground.tsx       SkSL shader — brick wall with normal map lighting
       DustParticles.tsx         Floating dust motes, lit by registered neons
       NeonRendererContext.ts    React context + useNeonRenderer hook
@@ -96,22 +99,20 @@ A React context (`NeonRendererContext`) holds a registry of light sources. Any c
 - Stores emitters in **content coordinates**; scroll offset is subtracted on-the-fly so lit spots track buttons
 - Allows per-tube density tuning via `EMITTER_SPACING` (~12px)
 
-**Registration flow:**
-1. `NeonLightSource` mounts → `measureAndRegister()` 
-2. Calls `measure()` twice to get box position (rel X/Y + scroll)
-3. Builds tube path: default = bounding-box rounded-rect (matches button outline); optional `tubePath` prop for custom shapes
-4. Walks path with `ContourMeasureIter`, samples points every ~12px into `emitters: number[]` (flat `[x0,y0,x1,y1,…]`)
-5. Calls `registerLight({ id, emitters, r, g, b, intensity })`
-6. `NeonRenderer` stores in `lightsShared` (Reanimated mirror) + context
+**Frames (`LightFrame`) — lights follow moving tubes:**
+- `<LightFrame translateX translateY scale opacity>` is an Animated.View driven by SharedValues. The same values move the content AND its light, in the same UI frame, so glow never lags its tube. Frames nest (screen → wheel row → dragged chip). Translate + uniform scale only.
+- Each frame publishes a live world transform `{ox, oy, s, a}` (screen = o + s·local) into `framesShared`. Frame opacity multiplies light power; frame scale shrinks glow reach.
+- Lights store emitters in their nearest frame's **local, untransformed** coords (`frameId` on `LightSource`; `ROOT_FRAME` = no frame, where root maps `oy = -scroll`). Wall + dust map them through `resolveFrame()` every frame.
+- Use frame `opacity` to make something visually disappear (transparent glass too). To power a tube off, drop its `brightness` — cold glass stays.
 
-**Brightness updates (flicker/slider):**
-- Write to `intensityShared: SharedValue<Record<id, intensity>>` on UI thread (via `useAnimatedReaction`)
-- No React re-render — consumers (dust worklet, brick uniforms) read live brightness directly
+**Registration (`useLightRegistration`)** — shared by NeonLightSource, NeonText, NeonSVG, PathLight:
+1. Component computes `localEmitters` in its own view's untransformed px (onLayout size, never measured size)
+2. `register()` (call from onLayout) measures the view + its frame + the container in ONE UI tick (`measure()` on animated refs) → frame-local emitters → `registerLight`. Exact even mid-animation (verified: measure() includes Reanimated transforms, iOS + Android)
+3. Live power → `intensityShared` via `useAnimatedReaction`; colour → `updateLight`; unregister on unmount
 
-**Scroll tracking:**
-- `NeonRenderer` accepts `scrollOffset?: SharedValue<number>` (from `useScrollOffset`)
-- Stored as `scrollShared` in context
-- Consumers subtract live scroll from emitter Y coords on-the-fly (UI thread, negligible cost)
+**Brightness updates (flicker/slider):** written to `intensityShared` on the UI thread — no React re-render.
+
+**Performance mode:** wall lighting is capped at `wallLightingFps` while still, but bypasses the cap whenever `framesVersion` changes (anything moving) so the glow never steps behind a slide.
 
 ### BrickBackground Shader (SkSL)
 

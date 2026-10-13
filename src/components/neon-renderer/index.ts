@@ -1,7 +1,10 @@
 export { NeonRenderer } from "./NeonRenderer";
 export { NeonLightSource } from "./NeonLightSource";
+export { LightFrame, useLightFrame } from "./LightFrame";
+export { useLightRegistration } from "./useLightRegistration";
 export { useNeonRenderer } from "./NeonRendererContext";
-export type { LightSource, NeonRendererContextValue } from "./types";
+export type { FrameWorld, LightSource, NeonRendererContextValue } from "./types";
+export { ROOT_FRAME } from "./types";
 export type { WallTextures } from "./BrickBackground";
 export type { RenderQuality } from "./render-quality";
 export { hueToRgb, hueToWarmRgb, rgbToHex } from "./utils";

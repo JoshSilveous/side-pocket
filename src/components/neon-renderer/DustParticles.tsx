@@ -19,7 +19,8 @@ import {
     type SharedValue,
 } from "react-native-reanimated";
 
-import type { LightSource } from "./types";
+import { resolveFrame } from "./frame-math";
+import type { FrameWorld, LightSource } from "./types";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ type Props = {
     lightsShared: SharedValue<LightSource[]>;
     intensityShared: SharedValue<Record<string, number>>;
     scrollShared: SharedValue<number>;
+    framesShared: SharedValue<Record<string, FrameWorld>>;
     width: number;
     height: number;
     particleCount?: number;
@@ -99,6 +101,7 @@ export const DustParticles = memo(function DustParticles({
     lightsShared,
     intensityShared,
     scrollShared,
+    framesShared,
     width,
     height,
     particleCount = PARTICLE_COUNT,
@@ -228,6 +231,7 @@ export const DustParticles = memo(function DustParticles({
         const geometry = lightGeometry.value;
         const intens = intensityShared.value;
         const scroll = scrollShared.value;
+        const frames = framesShared.value;
 
         const ss = (e0: number, e1: number, x: number) => {
             let t = (x - e0) / (e1 - e0);
@@ -245,28 +249,30 @@ export const DustParticles = memo(function DustParticles({
         for (let k = 0; k < geometry.length; k++) {
             const bounds = geometry[k];
             const l = bounds.light;
-            const intensity = intens[l.id] ?? l.intensity;
+            const f = resolveFrame(frames, l.frameId, scroll);
+            if (!f) continue;
+            const intensity = (intens[l.id] ?? l.intensity) * f.a;
             if (intensity <= 0) continue;
-            // Use the live overdrive reach and the same scroll subtraction as
+            // Use the live overdrive reach and the same frame mapping as
             // the exact emitter search. Outside this box no emitter contributes.
             const reach =
-                intensity <= 1
+                (intensity <= 1
                     ? DUST_REACH
-                    : DUST_REACH * (1 + (intensity - 1) * 0.4);
+                    : DUST_REACH * (1 + (intensity - 1) * 0.4)) * f.s;
             if (
-                p.x < bounds.minX - reach ||
-                p.x > bounds.maxX + reach ||
-                p.y < bounds.minY - scroll - reach ||
-                p.y > bounds.maxY - scroll + reach
+                p.x < f.ox + f.s * bounds.minX - reach ||
+                p.x > f.ox + f.s * bounds.maxX + reach ||
+                p.y < f.oy + f.s * bounds.minY - reach ||
+                p.y > f.oy + f.s * bounds.maxY + reach
             ) {
                 continue;
             }
             const em = l.emitters;
-            // Nearest emitter of this tube (emitter Y is content-space → subtract scroll).
+            // Nearest emitter of this tube, mapped through its frame to screen space.
             let minD2 = Infinity;
             for (let e = 0; e < em.length; e += 2) {
-                const dx = p.x - em[e];
-                const dy = p.y - (em[e + 1] - scroll);
+                const dx = p.x - (f.ox + f.s * em[e]);
+                const dy = p.y - (f.oy + f.s * em[e + 1]);
                 const d2 = dx * dx + dy * dy;
                 if (d2 < minD2) minD2 = d2;
             }

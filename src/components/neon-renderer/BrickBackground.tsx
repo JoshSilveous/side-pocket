@@ -9,7 +9,8 @@ import {
 } from "@shopify/react-native-skia";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 
-import type { LightSource } from "./types";
+import { resolveFrame } from "./frame-math";
+import type { FrameWorld, LightSource } from "./types";
 import { RENDER_QUALITY, type RenderQuality } from "./render-quality";
 import { useWallLighting } from "./useWallLighting";
 import { buildWallShader, MAX_EMITTERS } from "./wall-shader";
@@ -72,6 +73,8 @@ type Props = {
     lightsShared: SharedValue<LightSource[]>;
     intensityShared: SharedValue<Record<string, number>>;
     scrollShared: SharedValue<number>;
+    framesShared: SharedValue<Record<string, FrameWorld>>;
+    framesVersion: SharedValue<number>;
     width: number;
     height: number;
     textures?: WallTextures;
@@ -93,6 +96,8 @@ export function BrickBackground({
     lightsShared,
     intensityShared,
     scrollShared,
+    framesShared,
+    framesVersion,
     width,
     height,
     textures,
@@ -103,7 +108,14 @@ export function BrickBackground({
     "use no memo";
     // Keep shared-value reads on the UI thread under React Compiler.
     const { wallRenderScale, wallLightingFps, wallSpecular } = RENDER_QUALITY[quality];
-    const lighting = useWallLighting(lightsShared, intensityShared, scrollShared, wallLightingFps);
+    const lighting = useWallLighting(
+        lightsShared,
+        intensityShared,
+        scrollShared,
+        framesShared,
+        framesVersion,
+        wallLightingFps,
+    );
     const textureEffect = getTextureEffect(wallSpecular);
     const albedoImg = useImage(textures?.albedo ?? null);
     const normalImg = useImage(textures?.normalMap ?? null);
@@ -125,13 +137,14 @@ export function BrickBackground({
     // Brightness flicker, slider drags AND scroll update shared values on the UI
     // thread, so the brick redraws without any React reconciliation. Each tube's
     // emitters are strided to BRICK_EMITTERS_PER_LIGHT and its intensity split across
-    // them; emitter Y is content-space, so we subtract the live scroll offset.
+    // them; emitters are frame-local, mapped through each frame's live transform.
     const uniforms = useDerivedValue(() => {
         "worklet";
         const snapshot = lighting.value;
         const lights = snapshot.lights;
         const intens = snapshot.intensities;
         const scroll = snapshot.scroll;
+        const frames = snapshot.frames;
 
         const emitters: number[] = new Array(MAX_EMITTERS * 4).fill(0);
         const emitterColors: number[] = new Array(MAX_EMITTERS * 4).fill(0);
@@ -150,6 +163,8 @@ export function BrickBackground({
 
         for (let k = 0; k < lights.length && count < MAX_EMITTERS; k++) {
             const l = lights[k];
+            const f = resolveFrame(frames, l.frameId, scroll);
+            if (!f || f.a <= 0) continue;
             const em = l.emitters;
             const pts = em.length / 2;
             if (pts <= 0) continue;
@@ -163,20 +178,21 @@ export function BrickBackground({
             const boost = Math.min(3, take);
             const densityGain =
                 take >= BRICK_EMITTERS_PER_LIGHT ? 1 : SIGN_WALL_GAIN;
-            const power = intens[l.id] ?? l.intensity; // raw power, can exceed 1
+            const power = (intens[l.id] ?? l.intensity) * f.a; // raw power, can exceed 1
             const intensity = (power / take) * boost * densityGain;
             // Overdrive (>1) stretches the falloff outward so the whole reach
             // brightens, not just the core.
+            // A scaled-down tube throws a proportionally smaller glow.
             const radius =
-                power <= 1
+                (power <= 1
                     ? BRICK_REACH
-                    : BRICK_REACH * (1 + (power - 1) * BRICK_OVERDRIVE_REACH);
+                    : BRICK_REACH * (1 + (power - 1) * BRICK_OVERDRIVE_REACH)) * f.s;
 
             for (let s = 0; s < take && count < MAX_EMITTERS; s++) {
                 const idx = Math.floor(s * stride) * 2;
                 const o = count * 4;
-                emitters[o] = em[idx];
-                emitters[o + 1] = em[idx + 1] - scroll;
+                emitters[o] = f.ox + f.s * em[idx];
+                emitters[o + 1] = f.oy + f.s * em[idx + 1];
                 emitters[o + 2] = radius;
                 emitters[o + 3] = intensity;
                 emitterColors[o] = l.r;
