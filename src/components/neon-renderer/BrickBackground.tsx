@@ -153,11 +153,18 @@ export function BrickBackground({
         // Split the emitter budget across lights: a couple of buttons get the full
         // BRICK_EMITTERS_PER_LIGHT each; a 30-path sign gets ~1 each. Keeps the
         // button wall wash identical while letting every path light the wall.
+        // Only lights that can actually be seen share the budget, so hidden
+        // stack screens don't starve the visible one.
+        let visible = 0;
+        for (let k = 0; k < lights.length; k++) {
+            const f = resolveFrame(frames, lights[k].frameId, scroll);
+            if (f && f.a > 0) visible++;
+        }
         const perLight = Math.max(
             1,
             Math.min(
                 BRICK_EMITTERS_PER_LIGHT,
-                Math.floor(MAX_EMITTERS / Math.max(1, lights.length)),
+                Math.floor(MAX_EMITTERS / Math.max(1, visible)),
             ),
         );
 

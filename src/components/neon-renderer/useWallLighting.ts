@@ -1,4 +1,3 @@
-import { useIsFocused } from "expo-router";
 import { useEffect } from "react";
 import { AppState } from "react-native";
 import {
@@ -73,10 +72,9 @@ export function useWallLighting(
         lastSampleTime.value = info.timestamp;
     }, false);
 
-    const isFocused = useIsFocused();
     useEffect(() => {
         const sync = () => {
-            const active = fps > 0 && isFocused && AppState.currentState === "active";
+            const active = fps > 0 && AppState.currentState === "active";
             if (active) lastSampleTime.value = -1;
             frame.setActive(active);
         };
@@ -86,7 +84,7 @@ export function useWallLighting(
             sub.remove();
             frame.setActive(false);
         };
-    }, [fps, isFocused, frame, lastSampleTime]);
+    }, [fps, frame, lastSampleTime]);
 
     // The downstream uniform worklet captures only this selected buffer. Reading
     // raw inputs in it would subscribe it to every update even in performance mode.

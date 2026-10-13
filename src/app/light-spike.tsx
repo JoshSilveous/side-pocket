@@ -12,16 +12,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import NeonButton from "@/components/neon-button";
-import { LightFrame, NeonLightSource, NeonRenderer } from "@/components/neon-renderer";
+import { LightFrame, NeonLightSource } from "@/components/neon-renderer";
 import { NeonText } from "@/components/neon-text";
 
 /** Dev bench for LightFrame: wall glow + dust must stay locked to the tubes. */
-
-const WALL_TEXTURES = {
-    albedo: require("@/assets/textures/brick_albedo.png"),
-    normalMap: require("@/assets/textures/brick_normal.png"),
-    roughnessMap: require("@/assets/textures/brick_roughness.png"),
-};
 
 const EASE = Easing.inOut(Easing.quad);
 
@@ -129,8 +123,7 @@ export default function LightSpike() {
     ];
 
     return (
-        <NeonRenderer tileCount={0.8} wallTextures={WALL_TEXTURES}>
-            <SafeAreaView style={styles.root}>
+        <SafeAreaView style={styles.root}>
                 <Text style={styles.title}>LIGHT FRAME BENCH</Text>
 
                 <View style={styles.stage}>
@@ -174,8 +167,7 @@ export default function LightSpike() {
                         </Pressable>
                     ))}
                 </View>
-            </SafeAreaView>
-        </NeonRenderer>
+        </SafeAreaView>
     );
 }
 

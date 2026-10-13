@@ -19,7 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NeonButton from "@/components/neon-button";
-import { NeonLightSource, NeonRenderer } from "@/components/neon-renderer";
+import { LightFrame, NeonLightSource } from "@/components/neon-renderer";
 import { NeonSlider } from "@/components/neon-slider";
 import { NeonText } from "@/components/neon-text";
 import { BottomTabInset, MaxContentWidth, Spacing } from "@/constants/theme";
@@ -205,21 +205,13 @@ export default function UITestingScreen() {
     const neonColor2 = hslToHex(hue2, 100, 50);
     const warmColor2 = warmColorFromHue(hue2);
 
-    // ── Scroll offset → NeonRenderer so the neon lighting tracks the buttons as
+    // ── Scroll offset → LightFrame so the neon lighting tracks the buttons as
     // they scroll (the brick + dust textures themselves stay fixed). UI thread.
     const scrollRef = useAnimatedRef<ScrollView>();
     const scrollY = useScrollOffset(scrollRef);
 
     return (
-        <NeonRenderer
-            tileCount={0.8}
-            scrollOffset={scrollY}
-            wallTextures={{
-                albedo: require("@/assets/textures/brick_albedo.png"),
-                normalMap: require("@/assets/textures/brick_normal.png"),
-                roughnessMap: require("@/assets/textures/brick_roughness.png"),
-            }}
-        >
+        <View style={{ flex: 1 }}>
             <ScrollView
                 ref={scrollRef}
                 style={styles.scrollView}
@@ -229,6 +221,7 @@ export default function UITestingScreen() {
                     contentPlatformStyle,
                 ]}
             >
+                <LightFrame scrollY={scrollY}>
                 <View style={styles.container}>
                     <View style={styles.titleWrap}>
                         <NeonText
@@ -418,8 +411,9 @@ export default function UITestingScreen() {
                         </View>
                     </View>
                 </View>
+                </LightFrame>
             </ScrollView>
-        </NeonRenderer>
+        </View>
     );
 }
 

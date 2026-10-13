@@ -17,6 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useLightRegistration } from "./neon-renderer/useLightRegistration";
+import { COLD_TUBE_COLOR } from "./side-pocket/ColdTubes";
 import { hexToRgb01 } from "./side-pocket/utils";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -37,9 +38,6 @@ const BODY_BLUR = 0.06;
 const WARM_BLUR = 0.04;
 /** Soft white halo right around the hot core. */
 const HOT_BLUR = 0.03;
-
-/** Faint grey so the label stays legible even when unlit (brightness 0). */
-const COLD_TEXT_COLOR = "#6a6a72";
 
 /** Bloom reach multiplier cap — brightness drives bloom blur up to this (overdrive
  *  past 100% = wider reach). Keep in sync with neon-tube's BLOOM_REACH_MAX. */
@@ -229,7 +227,7 @@ export function NeonText({
                     text={text}
                     x={drawX}
                     y={drawY}
-                    color={COLD_TEXT_COLOR}
+                    color={COLD_TUBE_COLOR}
                 />
             </Canvas>
 

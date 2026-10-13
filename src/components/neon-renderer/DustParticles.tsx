@@ -9,7 +9,6 @@ import {
     useRSXformBuffer,
     useTexture,
 } from "@shopify/react-native-skia";
-import { useIsFocused } from "expo-router";
 import { memo, useEffect, useMemo } from "react";
 import { AppState } from "react-native";
 import {
@@ -181,15 +180,14 @@ export const DustParticles = memo(function DustParticles({
         });
     }, false);
 
-    // Pause the simulation when the screen isn't visible (other tab / backgrounded).
-    const isFocused = useIsFocused();
+    // Pause the simulation while the app is backgrounded.
     useEffect(() => {
         const sync = () =>
-            frame.setActive(isFocused && AppState.currentState === "active");
+            frame.setActive(AppState.currentState === "active");
         sync();
         const sub = AppState.addEventListener("change", sync);
         return () => sub.remove();
-    }, [isFocused, frame]);
+    }, [frame]);
 
     // ── Per-instance transforms (position + scale) ────────────────────────────
     const transforms = useRSXformBuffer(particleCount, (val, i) => {

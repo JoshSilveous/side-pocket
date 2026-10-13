@@ -1,5 +1,19 @@
-import { createContext, useCallback, useContext, useEffect, useId } from "react";
-import type { LayoutChangeEvent, View, ViewProps } from "react-native";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+} from "react";
+import {
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewProps,
+  type ViewStyle,
+} from "react-native";
 import Animated, {
   measure,
   useAnimatedReaction,
@@ -19,8 +33,11 @@ type Animatable = number | SharedValue<number>;
 
 export type LightFrameContextValue = {
   id: string;
+  /** The transformed (inner) view — its top-left is the frame's local origin. */
   ref: AnimatedRef<View>;
   world: SharedValue<FrameWorld>;
+  /** Untransformed layout size. */
+  size: SharedValue<{ w: number; h: number }>;
 };
 
 const LightFrameContext = createContext<LightFrameContextValue | null>(null);
@@ -38,6 +55,37 @@ function useAnimatable(v: Animatable | undefined, fallback: number): SharedValue
   return v !== undefined && typeof v !== "number" ? v : own;
 }
 
+// Styles that lay out / paint the children go on the transformed inner view;
+// everything else (size, position, margins, flex) stays on the static outer view.
+const INNER_KEYS = new Set([
+  "flexDirection",
+  "flexWrap",
+  "justifyContent",
+  "alignItems",
+  "alignContent",
+  "gap",
+  "rowGap",
+  "columnGap",
+  "backgroundColor",
+  "overflow",
+  "elevation",
+  "direction",
+  "transform",
+]);
+const isInnerKey = (k: string) =>
+  INNER_KEYS.has(k) ||
+  k.startsWith("padding") ||
+  k.startsWith("border") ||
+  k.startsWith("shadow");
+
+function splitStyle(style: StyleProp<ViewStyle>): [ViewStyle, ViewStyle] {
+  const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
+  const outer: Record<string, unknown> = {};
+  const inner: Record<string, unknown> = {};
+  for (const k in flat) (isInnerKey(k) ? inner : outer)[k] = flat[k];
+  return [outer as ViewStyle, inner as ViewStyle];
+}
+
 type Props = ViewProps & {
   translateX?: Animatable;
   translateY?: Animatable;
@@ -45,6 +93,11 @@ type Props = ViewProps & {
   scale?: Animatable;
   /** Multiplies both the content's opacity and the light it casts. */
   opacity?: Animatable;
+  /**
+   * Native scroll offset of a ScrollView this frame sits inside (e.g. from
+   * `useScrollOffset`). Tracked for lighting only — the ScrollView moves the content.
+   */
+  scrollY?: SharedValue<number>;
 };
 
 /**
@@ -60,6 +113,7 @@ export function LightFrame({
   translateY,
   scale,
   opacity,
+  scrollY,
   style,
   onLayout,
   children,
@@ -69,6 +123,7 @@ export function LightFrame({
   const renderer = useNeonRenderer();
   const parent = useLightFrame();
   const id = useId();
+  const outerRef = useAnimatedRef<View>();
   const ref = useAnimatedRef<View>();
 
   const tx = useAnimatable(translateX, 0);
@@ -76,7 +131,7 @@ export function LightFrame({
   const sc = useAnimatable(scale, 1);
   const op = useAnimatable(opacity, 1);
 
-  // Untransformed layout size + top-left in the parent frame's local space.
+  // Untransformed size + top-left in the parent frame's local space.
   const size = useSharedValue({ w: 0, h: 0 });
   const base = useSharedValue<{ x: number; y: number } | null>(null);
 
@@ -95,9 +150,10 @@ export function LightFrame({
     // RN scales around the centre: local p → base + c + t + s·(p − c).
     const cx = size.value.w / 2;
     const cy = size.value.h / 2;
+    const sy = scrollY ? scrollY.value : 0;
     return {
       ox: P.ox + P.s * (b.x + cx + tx.value - s * cx),
-      oy: P.oy + P.s * (b.y + cy + ty.value - s * cy),
+      oy: P.oy + P.s * (b.y + cy + ty.value - sy - s * cy),
       s: ws,
       a,
       ready: true,
@@ -132,39 +188,39 @@ export function LightFrame({
 
   const containerRef = renderer?.containerRef;
   const parentRef = parent?.ref;
+  const parentSize = parent?.size;
 
-  // Solve for `base` from where the frame actually is right now: measured
-  // top-left = parentOrigin + parentScale·(base + c + t − s·c). Measuring and
-  // reading the transform in one UI tick keeps this exact even mid-animation.
+  // The outer view never carries this frame's transform, so measuring it (and the
+  // parent's origin) in one UI tick gives `base` from measurements alone — no
+  // mixing with a transform SharedValue that may be a frame ahead of the view.
   const solveBase = useCallback(
     (w: number, h: number) => {
       if (!containerRef) return;
       scheduleOnUI(() => {
         "worklet";
         size.value = { w, h };
-        const m = measure(ref);
+        const m = measure(outerRef);
         const c = measure(containerRef);
         if (!m || !c) return;
         let px = 0;
         let py = -(scroll?.value ?? 0);
         let ps = 1;
-        if (parentRef && parentWorld) {
+        if (parentRef && parentSize) {
           const pm = measure(parentRef);
           if (!pm) return;
           px = pm.pageX - c.pageX;
           py = pm.pageY - c.pageY;
-          ps = parentWorld.value.s;
+          const pw = parentSize.value.w;
+          ps = pw > 0 ? pm.width / pw : 1;
         }
-        const s = sc.value;
-        const cx = w / 2;
-        const cy = h / 2;
+        const sy = scrollY ? scrollY.value : 0;
         base.value = {
-          x: (m.pageX - c.pageX - px) / ps - cx - tx.value + s * cx,
-          y: (m.pageY - c.pageY - py) / ps - cy - ty.value + s * cy,
+          x: (m.pageX - c.pageX - px) / ps,
+          y: (m.pageY - c.pageY - py) / ps + sy,
         };
       });
     },
-    [containerRef, parentRef, parentWorld, scroll, ref, size, base, sc, tx, ty],
+    [containerRef, parentRef, parentSize, scroll, scrollY, outerRef, size, base],
   );
 
   const handleLayout = useCallback(
@@ -185,16 +241,20 @@ export function LightFrame({
     ],
   }));
 
+  const [outerStyle, innerStyle] = useMemo(() => splitStyle(style), [style]);
+  const ctx = useMemo(() => ({ id, ref, world, size }), [id, ref, world, size]);
+
   return (
-    <LightFrameContext.Provider value={{ id, ref, world }}>
-      <Animated.View
-        ref={ref}
-        style={[style, animatedStyle]}
-        onLayout={handleLayout}
-        {...rest}
-      >
-        {children}
-      </Animated.View>
+    <LightFrameContext.Provider value={ctx}>
+      <View ref={outerRef} style={outerStyle} onLayout={handleLayout} {...rest}>
+        <Animated.View ref={ref} style={[styles.inner, innerStyle, animatedStyle]}>
+          {children}
+        </Animated.View>
+      </View>
     </LightFrameContext.Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  inner: { flexGrow: 1 },
+});

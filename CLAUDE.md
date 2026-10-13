@@ -77,6 +77,15 @@ assets/
 
 ---
 
+## Navigation (NeonStack)
+
+- `NeonRenderer` is mounted ONCE in `src/app/_layout.tsx`, wrapping `<NeonStack />`. Screens never mount their own renderer and must have transparent backgrounds.
+- `src/components/neon-stack/NeonStack.tsx` is a custom Expo Router navigator (`useNavigationBuilder(StackRouter)` from `expo-router/react-navigation` + `withLayoutContext`). `router.push/back/replace/dismissTo`, typed routes and Android back all work as normal.
+- Transitions are Reanimated-driven (native stack can't be tracked by the lights): each screen sits in a `LightFrame`; forward slides content left, back slides right; the wall stays put and light travels with its tubes. Left-edge swipe-back drives the same progress interactively. `gestureEnabled: false` in screen options disables it.
+- Screens below the top stay mounted but hidden (frame opacity 0 → no light, no wall emitter budget).
+- `useScreenTransition()` → `{ status: "active" | "entering" | "leaving" | "hidden", direction, progress }` — hook point for power-on animations as a screen slides in.
+- Scrollable screens: wrap the ScrollView content in `<LightFrame scrollY={useScrollOffset(ref)}>`.
+
 ## NeonRenderer Architecture
 
 This is the most complex system in the codebase. Read this before touching it.
@@ -101,6 +110,7 @@ A React context (`NeonRendererContext`) holds a registry of light sources. Any c
 
 **Frames (`LightFrame`) — lights follow moving tubes:**
 - `<LightFrame translateX translateY scale opacity>` is an Animated.View driven by SharedValues. The same values move the content AND its light, in the same UI frame, so glow never lags its tube. Frames nest (screen → wheel row → dragged chip). Translate + uniform scale only.
+- A frame renders a static outer View (size/position/margins) and a transformed inner Animated.View (children layout, padding, borders, background — split automatically). The frame's rest position is solved by measuring the outer view + parent origin in one UI tick; light positions likewise use measured scale (measured width ÷ layout width). Never mix `measure()` results with transform SharedValues — the value can be a frame ahead of the view (caused lights to land one screen-width off during stack transitions).
 - Each frame publishes a live world transform `{ox, oy, s, a}` (screen = o + s·local) into `framesShared`. Frame opacity multiplies light power; frame scale shrinks glow reach.
 - Lights store emitters in their nearest frame's **local, untransformed** coords (`frameId` on `LightSource`; `ROOT_FRAME` = no frame, where root maps `oy = -scroll`). Wall + dust map them through `resolveFrame()` every frame.
 - Use frame `opacity` to make something visually disappear (transparent glass too). To power a tube off, drop its `brightness` — cold glass stays.

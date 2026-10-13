@@ -10,7 +10,7 @@ import { StyleSheet } from "react-native";
 
 /** Colour of an unlit glass tube — very close to black so the powered-off sign is
  *  barely-there (with ~30 tubes anything lighter reads as too bright). Tune here. */
-const COLD_TUBE_COLOR = "#12121479";
+export const COLD_TUBE_COLOR = "#12121479";
 
 type Props = {
     /** Scaled paths in sign-content coordinates (origin = sign top-left). */

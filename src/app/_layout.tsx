@@ -1,9 +1,17 @@
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router";
 import { useColorScheme } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { DevMenu } from "@/components/dev-menu";
+import { NeonRenderer } from "@/components/neon-renderer";
+import { NeonStack } from "@/components/neon-stack";
+import { WALL_TEXTURES } from "@/constants/textures";
 
+/**
+ * The renderer lives here, above the navigator, so the wall + dust never remount
+ * between routes. NeonStack slides each screen inside a LightFrame, so lights
+ * travel with their tubes while the bricks stay put. Screens must be transparent.
+ */
 export default function RootLayout() {
     const colorScheme = useColorScheme();
     return (
@@ -11,20 +19,10 @@ export default function RootLayout() {
             <ThemeProvider
                 value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
             >
-                {/*
-                    No native tab/nav bar anymore — the whole app lives behind a
-                    headerless Stack. `index` is the persistent game surface;
-                    `ui-testing` / `splash-animation` still exist as routes but
-                    are only reachable via the 5-finger DevMenu.
-                    Black contentStyle prevents a white flash between routes.
-                */}
                 <DevMenu>
-                    <Stack
-                        screenOptions={{
-                            headerShown: false,
-                            contentStyle: { backgroundColor: "#000" },
-                        }}
-                    />
+                    <NeonRenderer tileCount={0.8} wallTextures={WALL_TEXTURES}>
+                        <NeonStack />
+                    </NeonRenderer>
                 </DevMenu>
             </ThemeProvider>
         </GestureHandlerRootView>

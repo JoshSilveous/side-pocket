@@ -54,6 +54,7 @@ export function useLightRegistration({
     const containerRef = rdr.containerRef;
     const scroll = rdr.scrollShared;
     const frameRef = fr?.ref ?? null;
+    const frameSize = fr?.size ?? null;
     const frameWorld = fr?.world ?? null;
     const frameId = fr?.id ?? ROOT_FRAME;
     const commit = (emitters: number[]) => {
@@ -71,8 +72,9 @@ export function useLightRegistration({
       rdr.registerLight(source);
     };
 
-    // View position in frame-local space, measured in ONE UI tick together with
-    // the frame, so registering mid-animation is exact.
+    // View position in frame-local space from measurements taken in ONE UI tick
+    // (view + frame), so registering mid-animation is exact. Scale comes from the
+    // frame's measured vs layout width — never from a SharedValue that can lead.
     scheduleOnUI(() => {
       "worklet";
       const m = measure(viewRef);
@@ -81,12 +83,14 @@ export function useLightRegistration({
       let fx = 0;
       let fy = -scroll.value;
       let fs = 1;
-      if (frameRef && frameWorld) {
+      if (frameRef && frameSize && frameWorld) {
         const fm = measure(frameRef);
         if (!fm) return;
         fx = fm.pageX - c.pageX;
         fy = fm.pageY - c.pageY;
-        fs = frameWorld.value.s;
+        const fw = frameSize.value.w;
+        // Frame not laid out yet → its transform's scale is the best we have.
+        fs = fw > 0 ? fm.width / fw : frameWorld.value.s;
       }
       const vx = (m.pageX - c.pageX - fx) / fs;
       const vy = (m.pageY - c.pageY - fy) / fs;

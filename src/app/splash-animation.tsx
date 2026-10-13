@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from "react";
 import { Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { NeonRenderer } from "@/components/neon-renderer";
 import {
     SidePocketNeon,
     type SidePocketNeonHandle,
@@ -80,14 +79,7 @@ export default function SplashAnimation() {
     }, [playSizzle]);
 
     return (
-        <NeonRenderer
-            tileCount={0.8}
-            wallTextures={{
-                albedo: require("@/assets/textures/brick_albedo.png"),
-                normalMap: require("@/assets/textures/brick_normal.png"),
-                roughnessMap: require("@/assets/textures/brick_roughness.png"),
-            }}
-        >
+        <View style={{ flex: 1 }}>
             <View
                 style={{
                     flex: 1,
@@ -125,6 +117,6 @@ export default function SplashAnimation() {
                     ▶ PLAY
                 </Text>
             </Pressable>
-        </NeonRenderer>
+        </View>
     );
 }
