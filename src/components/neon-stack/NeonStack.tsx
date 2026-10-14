@@ -15,6 +15,7 @@ import {
 import {
     createContext,
     useContext,
+    useEffect,
     useLayoutEffect,
     useMemo,
     useRef,
@@ -34,9 +35,16 @@ import {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 
-import { LightFrame } from "@/components/neon-renderer";
+import { LightFrame, WALL_LIGHT_REACH } from "@/components/neon-renderer";
+import { createPowerOnScope, PowerOnContext } from "@/components/power-on";
 
-const DURATION = 420;
+const DURATION = 480;
+/**
+ * Dark gap between adjacent screens while sliding. Wall glow reaches far past a
+ * tube, so without it an off-screen screen's light visibly pops on/off at the
+ * edge. At 60% of reach the (1 − d/reach)⁴ falloff is ~2.5% — effectively dark.
+ */
+const SCREEN_GAP = Math.round(WALL_LIGHT_REACH * 0.6);
 const EASE = Easing.inOut(Easing.cubic);
 /** Width (px) of the left-edge strip that starts a swipe-back. */
 const EDGE_WIDTH = 28;
@@ -98,8 +106,9 @@ function ScreenLayer({
 }) {
     const tx = useDerivedValue(() => {
         const p = progress.value;
-        if (role === "in") return (dir === "forward" ? 1 : -1) * width * (1 - p);
-        if (role === "out") return (dir === "forward" ? -1 : 1) * width * p;
+        const d = width + SCREEN_GAP;
+        if (role === "in") return (dir === "forward" ? 1 : -1) * d * (1 - p);
+        if (role === "out") return (dir === "forward" ? -1 : 1) * d * p;
         return 0;
     }, [role, dir, width]);
 
@@ -111,20 +120,29 @@ function ScreenLayer({
         () => ({ status: STATUS[role], direction: dir, progress }),
         [role, dir, progress],
     );
+
+    // A pushed screen mounts hidden → its tubes start dark and stagger on the
+    // moment it starts sliding in. The initial screen mounts on top, already lit.
+    const scope = useRef(createPowerOnScope(role !== "top")).current;
+    useEffect(() => {
+        if (role !== "hidden") scope.fire();
+    }, [role, scope]);
     const hidden = role === "hidden";
 
     return (
         <ScreenTransitionContext.Provider value={ctx}>
-            <LightFrame
-                translateX={tx}
-                opacity={opacity}
-                style={StyleSheet.absoluteFill}
-                pointerEvents={role === "top" ? "auto" : "none"}
-                accessibilityElementsHidden={hidden}
-                importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
-            >
-                {children}
-            </LightFrame>
+            <PowerOnContext.Provider value={scope}>
+                <LightFrame
+                    translateX={tx}
+                    opacity={opacity}
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents={role === "top" ? "auto" : "none"}
+                    accessibilityElementsHidden={hidden}
+                    importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
+                >
+                    {children}
+                </LightFrame>
+            </PowerOnContext.Provider>
         </ScreenTransitionContext.Provider>
     );
 }
@@ -255,7 +273,8 @@ function NeonStackNavigator({
             scheduleOnRN(beginSwipe);
         })
         .onUpdate((e) => {
-            const p = e.translationX / width;
+            // Keeps the outgoing screen exactly under the finger.
+            const p = e.translationX / (width + SCREEN_GAP);
             progress.value = p < 0 ? 0 : p > 1 ? 1 : p;
         })
         .onEnd((e) => {

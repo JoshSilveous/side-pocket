@@ -20,6 +20,8 @@ type Options = {
   rgb: [number, number, number];
   brightness: SharedValue<number>;
   enabled?: boolean;
+  /** See LightSource.wallGain — only for tubes of a dense multi-tube sign. */
+  wallGain?: number;
 };
 
 /**
@@ -33,6 +35,7 @@ export function useLightRegistration({
   rgb,
   brightness,
   enabled = true,
+  wallGain,
 }: Options) {
   const id = useId();
   const renderer = useNeonRenderer();
@@ -68,6 +71,7 @@ export function useLightRegistration({
         g: l.g,
         b: l.b,
         intensity: brightness.value,
+        wallGain,
       };
       rdr.registerLight(source);
     };
@@ -101,7 +105,7 @@ export function useLightRegistration({
       }
       scheduleOnRN(commit, out);
     });
-  }, [id, viewRef, brightness]);
+  }, [id, viewRef, brightness, wallGain]);
 
   useEffect(() => {
     register();

@@ -14,6 +14,8 @@ import { hexToRgb01, sampleEmitters } from "./utils";
  *  emitter of every light per particle (640x). */
 const MAX_PATH_EMITTERS = 8;
 const MIN_EMITTER_SPACING = 16;
+/** Wall wash per tube. ~30 tubes overlap, so each is heavily damped. */
+const SIGN_WALL_GAIN = 0.2;
 
 type Props = {
     /** Scaled path in sign-art coordinates (origin at the art's top-left). */
@@ -72,6 +74,7 @@ export function PathLight({
         rgb: hexToRgb01(color),
         brightness: bv,
         enabled,
+        wallGain: SIGN_WALL_GAIN,
     });
 
     useEffect(() => {

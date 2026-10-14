@@ -6,5 +6,6 @@ export { useNeonRenderer } from "./NeonRendererContext";
 export type { FrameWorld, LightSource, NeonRendererContextValue } from "./types";
 export { ROOT_FRAME } from "./types";
 export type { WallTextures } from "./BrickBackground";
+export { BRICK_REACH as WALL_LIGHT_REACH } from "./BrickBackground";
 export type { RenderQuality } from "./render-quality";
 export { hueToRgb, hueToWarmRgb, rgbToHex } from "./utils";

@@ -7,7 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAppReady } from "@/components/app-ready";
 import NeonButton from "@/components/neon-button";
 import {
-    companionPowerOn,
+    afterSignPowerOn,
     playPowerOnSizzle,
     SidePocketNeon,
 } from "@/components/side-pocket";
@@ -35,7 +35,7 @@ export default function Home() {
         if (!ready) return;
         SidePocketHaptics.prepare().catch(() => {});
         playPowerOnSizzle();
-        buttonPower.value = companionPowerOn();
+        buttonPower.value = afterSignPowerOn();
     }, [ready, buttonPower]);
 
     return (

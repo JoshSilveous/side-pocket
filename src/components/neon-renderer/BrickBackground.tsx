@@ -26,7 +26,7 @@ import { buildWallShader, MAX_EMITTERS } from "./wall-shader";
  *  gets at least one wall emitter — see `perLight` below. */
 const BRICK_EMITTERS_PER_LIGHT = 4;
 /** Per-emitter falloff reach (px). Extended range for a more dramatic glow. */
-const BRICK_REACH = 500;
+export const BRICK_REACH = 500;
 /**
  * How much overdrive (power > 1) extends the wall reach. radius grows as
  * BRICK_REACH * (1 + (power - 1) * this), so a cranked tube throws light further
@@ -34,12 +34,10 @@ const BRICK_REACH = 500;
  */
 const BRICK_OVERDRIVE_REACH = 0.4;
 /**
- * Extra damping for low-emitter (per-path neon sign) lights. A dense sign stacks
- * ~30 lights on the wall, which sum up and read too bright even at 1x each, so we
- * scale those down. Buttons (which use the full BRICK_EMITTERS_PER_LIGHT) are
- * unaffected. Lower = dimmer sign wall wash.
+ * Total wall wash of a regular light (button, text) at power 1, split across its
+ * emitters. Dense sign tubes set their own `wallGain` instead. Higher = brighter.
  */
-const SIGN_WALL_GAIN = 0.2;
+const LIGHT_WALL_GAIN = 1.6;
 
 // Compile each shader variant once, on first use. Performance mode omits the
 // roughness sampler and specular math entirely instead of branching per fragment.
@@ -154,22 +152,24 @@ export function BrickBackground({
         const emitterColors: number[] = new Array(MAX_EMITTERS * 4).fill(0);
         let count = 0;
 
-        // Split the emitter budget across lights: a couple of buttons get the full
-        // BRICK_EMITTERS_PER_LIGHT each; a 30-path sign gets ~1 each. Keeps the
-        // button wall wash identical while letting every path light the wall.
-        // Only lights that can actually be seen share the budget, so hidden
-        // stack screens don't starve the visible one.
-        let visible = 0;
+        // Emitter budget: regular lights (buttons, text) are served first, up to
+        // BRICK_EMITTERS_PER_LIGHT each; dense sign tubes share what's left. Only
+        // visible lights count, so hidden stack screens don't starve anyone.
+        // A light's TOTAL wall wash never depends on how many emitters it got —
+        // budget pressure makes it coarser, never dimmer.
+        let regular = 0;
+        let dense = 0;
         for (let k = 0; k < lights.length; k++) {
             const f = resolveFrame(frames, lights[k].frameId, scroll);
-            if (f && f.a > 0) visible++;
+            if (!f || f.a <= 0) continue;
+            if (lights[k].wallGain != null) dense++;
+            else regular++;
         }
-        const perLight = Math.max(
-            1,
-            Math.min(
-                BRICK_EMITTERS_PER_LIGHT,
-                Math.floor(MAX_EMITTERS / Math.max(1, visible)),
-            ),
+        const clampTake = (n: number) =>
+            Math.max(1, Math.min(BRICK_EMITTERS_PER_LIGHT, Math.floor(n)));
+        const perRegular = clampTake((MAX_EMITTERS - dense) / Math.max(1, regular));
+        const perDense = clampTake(
+            (MAX_EMITTERS - regular * perRegular) / Math.max(1, dense),
         );
 
         for (let k = 0; k < lights.length && count < MAX_EMITTERS; k++) {
@@ -180,17 +180,11 @@ export function BrickBackground({
             const pts = em.length / 2;
             if (pts <= 0) continue;
 
-            const take = Math.min(perLight, pts);
+            const take = Math.min(l.wallGain != null ? perDense : perRegular, pts);
             const stride = pts / take;
-            // The 3x boost assumes a light spreads across ~4 emitters (buttons). A
-            // per-path sign light uses 1 emitter, so cap the boost at `take` (buttons
-            // stay at 3x). Low-emitter sign lights also get SIGN_WALL_GAIN damping,
-            // since ~30 of them overlap on the wall and otherwise read too bright.
-            const boost = Math.min(3, take);
-            const densityGain =
-                take >= BRICK_EMITTERS_PER_LIGHT ? 1 : SIGN_WALL_GAIN;
             const power = (intens[l.id] ?? l.intensity) * f.a; // raw power, can exceed 1
-            const intensity = (power / take) * boost * densityGain;
+            const gain = l.wallGain ?? LIGHT_WALL_GAIN;
+            const intensity = (power * gain) / take;
             // Overdrive (>1) stretches the falloff outward so the whole reach
             // brightens, not just the core.
             // A scaled-down tube throws a proportionally smaller glow.

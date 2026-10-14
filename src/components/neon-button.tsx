@@ -12,6 +12,7 @@ import {
 
 import SidePocketHaptics from "../../modules/side-pocket-haptics";
 import { LightFrame, NeonLightSource } from "./neon-renderer";
+import { usePowerOnLevel } from "./power-on";
 import { NeonText } from "./neon-text";
 import { NeonTube } from "./neon-tube";
 
@@ -97,6 +98,11 @@ export default function NeonButton(props: {
     const effectiveBrightness = useDerivedValue(
         () => brightness.value * pressBoost.value,
     );
+    // The tube powers on on its own random delay; the label (NeonText) has its own.
+    const tubeLevel = usePowerOnLevel();
+    const tubeBrightness = useDerivedValue(
+        () => effectiveBrightness.value * tubeLevel.value,
+    );
 
     // Distinguish a quick tap from a hold: a timer started on press-down escalates to
     // the hold behavior only if still held past HOLD_THRESHOLD_MS.
@@ -123,7 +129,7 @@ export default function NeonButton(props: {
         <LightFrame scale={pressScale}>
             <NeonLightSource
                 color={color}
-                brightness={effectiveBrightness}
+                brightness={tubeBrightness}
                 cornerRadius={BORDER_RADIUS}
             >
                 <Pressable
@@ -203,13 +209,13 @@ export default function NeonButton(props: {
                             warmColor={warmColor}
                             tubeWidth={TUBE_WIDTH}
                             glow={GLOW}
-                            brightness={effectiveBrightness}
+                            brightness={tubeBrightness}
                             innerGlow={false}
                             glowPadding={GLOW_PADDING}
                         />
                     )}
-                    {/* Label shares the button's brightness so it powers on / flickers
-                        with the tube, and glows in the same colour. */}
+                    {/* Label shares the button's brightness (press flicker, external
+                        power) but powers on with its own random delay. */}
                     <NeonText
                         fontSize={FONT_SIZE}
                         color={color}

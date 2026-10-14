@@ -85,6 +85,7 @@ assets/
 - Screens below the top stay mounted but hidden (frame opacity 0 → no light, no wall emitter budget).
 - `useScreenTransition()` → `{ status: "active" | "entering" | "leaving" | "hidden", direction, progress }` — hook point for power-on animations as a screen slides in.
 - Launch: the native splash is the loader. `_layout` holds it (`preventAutoHideAsync`) until `NeonRenderer.onReady` (wall textures + shader loaded and drawn; 5s safety timeout), then fades it and flips `useAppReady()` to true. Intros (sign power-on, sizzle haptic, `companionPowerOn()` for buttons) start on that flag, never on mount.
+- Power-on (`src/components/power-on.tsx`): every stack screen has a `PowerOnContext` scope. Pushed screens start dark and `fire()` the moment they start sliding in; each `usePowerOnLevel()` consumer (NeonText, each NeonButton tube) glitches on after its own random 0–420ms delay, so labels and borders come on independently. Back navigation never re-fires. `GLITCH_KEYFRAMES` / `powerOnAnimation()` live there too — the single flicker definition shared with the sign. New neon components should multiply `usePowerOnLevel()` into their brightness (visual AND light).
 - Scrollable screens: wrap the ScrollView content in `<LightFrame scrollY={useScrollOffset(ref)}>`.
 
 ## NeonRenderer Architecture

@@ -17,6 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useLightRegistration } from "./neon-renderer/useLightRegistration";
+import { usePowerOnLevel } from "./power-on";
 import { COLD_TUBE_COLOR } from "./side-pocket/ColdTubes";
 import { hexToRgb01 } from "./side-pocket/utils";
 
@@ -102,6 +103,10 @@ export function NeonText({
         if (typeof brightness === "number") staticB.value = brightness;
     }, [brightness, staticB]);
 
+    // Screen power-on (if inside a PowerOnContext) gates both glow and light.
+    const level = usePowerOnLevel();
+    const power = useDerivedValue(() => bv.value * level.value);
+
     // Canvas padding must contain the bloom at MAX overdrive, or the enlarged glow
     // gets clipped at the canvas edge. Sized to the worst-case outer bloom radius.
     const pad = Math.max(
@@ -164,7 +169,7 @@ export function NeonText({
         viewRef,
         localEmitters: layout?.localEmitters ?? null,
         rgb: hexToRgb01(color),
-        brightness: bv,
+        brightness: power,
         enabled: emitLight,
     });
 
@@ -172,7 +177,7 @@ export function NeonText({
     // Opacity carries the 0→100% fade-in; bloom reach (below) carries intensity past
     // 100%, so brightness reads like power to the tube.
     const canvasAnimatedStyle = useAnimatedStyle(() => {
-        const b = Math.max(0, Math.min(1, bv.value));
+        const b = Math.max(0, Math.min(1, power.value));
         return { opacity: Math.pow(b, 0.7) };
     });
 
@@ -180,7 +185,7 @@ export function NeonText({
     // early return so hook order stays stable; base radii inlined since the const
     // versions are computed after the return.
     const reach = useDerivedValue(() => {
-        const b = bv.value;
+        const b = power.value;
         return b < 1 ? 1 : b > BLOOM_REACH_MAX ? BLOOM_REACH_MAX : b;
     });
     const bloomBlurV = useDerivedValue(

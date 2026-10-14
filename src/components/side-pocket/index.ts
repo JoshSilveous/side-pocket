@@ -1,5 +1,5 @@
 export {
-    companionPowerOn,
+    afterSignPowerOn,
     SidePocketNeon,
     type SidePocketNeonHandle,
 } from "./SidePocketNeon";

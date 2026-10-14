@@ -23,6 +23,12 @@ export type LightSource = {
   b: number;
   /** Registered power. Live power (flicker/slider) lives in `intensityShared`. */
   intensity: number;
+  /**
+   * Marks one tube of a dense multi-tube sign: its total wall wash is
+   * `power × wallGain` (many overlap, so each is damped) and it only gets the
+   * wall emitter budget left after regular lights. Omit for buttons/text.
+   */
+  wallGain?: number;
 };
 
 /**

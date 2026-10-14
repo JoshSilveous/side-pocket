@@ -24,6 +24,7 @@ import {
 } from "react-native-reanimated";
 
 import { splashArt } from "@/generated/splash-paths";
+import { GLITCH_KEYFRAMES, powerOnAnimation } from "../power-on";
 import { ColdTubes } from "./ColdTubes";
 import { PathLight } from "./PathLight";
 import { PathTube } from "./PathTube";
@@ -100,46 +101,22 @@ const RIPPLE_OFF_HOLD_MS = 200; // how long a tube stays dark before glitching o
  */
 const TAP_HIT_SLOP = 12;
 
-/**
- * The "power on" glitch as keyframes — `[durationMs, targetValue]`, starting from
- * 0. Single source of truth: the Reanimated `powerOnAnimation()` (default power-on)
- * and the worklet `rippleGlitchOn()` (overlapping taps) both read it, so they can't
- * drift apart.
- */
-const GLITCH_KEYFRAMES: readonly (readonly [number, number])[] = [
-    [70, 0.55], // first surge
-    [60, 0.05], // flicker off
-    [70, 0.9], // surge again
-    [50, 0.18], // brief dip
-    [160, 1], // settle fully on
-];
 const GLITCH_DURATION_MS = GLITCH_KEYFRAMES.reduce((s, [d]) => s + d, 0);
 
-/**
- * The per-tube "power on" animation: brightness 0 → 1 with a couple of brief
- * flickers, like a tube warming up. Used by the default (non-tap) power-on.
- */
-function powerOnAnimation() {
-    return withSequence(
-        ...GLITCH_KEYFRAMES.map(([duration, value]) =>
-            withTiming(value, { duration }),
-        ),
-    );
-}
+/** Worst-case length of the sign's own power-on (false starts + slowest tube). */
+export const SIGN_POWER_ON_MS =
+    POWER_ON_RESTART_GAPS_MS.reduce((a, b) => a + b, 0) +
+    POWER_ON_MAX_DELAY_MS +
+    GLITCH_DURATION_MS;
 
 /**
- * Power-on for a standalone tube (e.g. a button) that should come on *with* the
- * sign: waits out the sign's false starts plus a random per-tube delay, then
- * plays the same glitch. Assign to a brightness SharedValue that starts at 0.
+ * Power-on for a standalone tube (e.g. a button) that should come on right after
+ * the sign has finished. Assign to a brightness SharedValue that starts at 0.
  */
-export function companionPowerOn() {
-    const leadMs = POWER_ON_RESTART_GAPS_MS.reduce((a, b) => a + b, 0);
-    const delay =
-        leadMs +
-        POWER_ON_MIN_DELAY_MS +
-        Math.random() * (POWER_ON_MAX_DELAY_MS - POWER_ON_MIN_DELAY_MS);
-    return withDelay(delay, powerOnAnimation());
+export function afterSignPowerOn(pauseMs = 150) {
+    return withDelay(SIGN_POWER_ON_MS + pauseMs, powerOnAnimation());
 }
+
 
 // ── Worklet curves (UI thread) — used to blend overlapping tap ripples ──
 
