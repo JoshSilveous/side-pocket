@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import {
     useSharedValue,
     withDelay,
@@ -82,4 +82,16 @@ export function usePowerOnLevel(): SharedValue<number> {
         return scope.subscribe(powerOn);
     }, [scope, level]);
     return level;
+}
+
+/**
+ * Children start dark and stagger on as soon as this mounts — for overlays and
+ * anything that appears mid-screen (prompts, sheets).
+ */
+export function PowerOnGroup({ children }: { children: React.ReactNode }) {
+    const [scope] = useState(() => createPowerOnScope(true));
+    useEffect(() => {
+        scope.fire();
+    }, [scope]);
+    return <PowerOnContext.Provider value={scope}>{children}</PowerOnContext.Provider>;
 }

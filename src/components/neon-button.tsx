@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet } from "react-native";
+import { Pressable } from "react-native";
 import {
     cancelAnimation,
     SharedValue,
@@ -40,6 +40,8 @@ const PADDING_V = 12;
 const FONT_SIZE = 32;
 const BORDER_RADIUS = 12;
 const GLOW_PADDING = 40;
+/** Power of a disabled button — dim but still readable. */
+const DISABLED_POWER = 0.18;
 
 // ── Press haptics — crisp tap down, low buzz while held, dull thud on release ──
 const PRESS_INTENSITY = 1;
@@ -77,6 +79,10 @@ export default function NeonButton(props: {
     brightness?: SharedValue<number>;
     /** Press/hold/release haptics. Default: true. */
     haptics?: boolean;
+    /** Label size in px; padding + tube scale with it. Default: 32 */
+    fontSize?: number;
+    /** Dimmed and unpressable. */
+    disabled?: boolean;
 }) {
     const {
         children,
@@ -84,12 +90,20 @@ export default function NeonButton(props: {
         color = "#ff2020",
         warmColor = "#ff9999",
         haptics = true,
+        fontSize = FONT_SIZE,
+        disabled = false,
     } = props;
+    const k = fontSize / FONT_SIZE;
 
     const [size, setSize] = useState({ width: 0, height: 0 });
 
     const internalBrightness = useSharedValue(BASE_BRIGHTNESS);
-    const brightness = props.brightness ?? internalBrightness;
+    const external = props.brightness ?? internalBrightness;
+    const disabledMul = useSharedValue(disabled ? DISABLED_POWER : 1);
+    useEffect(() => {
+        disabledMul.value = withTiming(disabled ? DISABLED_POWER : 1, { duration: 200 });
+    }, [disabled, disabledMul]);
+    const brightness = useDerivedValue(() => external.value * disabledMul.value);
 
     // Press boost multiplies whatever brightness we're given (so it composes with an
     // externally-driven brightness), letting the press surge it past 100%.
@@ -120,7 +134,7 @@ export default function NeonButton(props: {
 
     const path =
         size.width > 0
-            ? buildRoundedRectPath(size.width, size.height, BORDER_RADIUS)
+            ? buildRoundedRectPath(size.width, size.height, BORDER_RADIUS * k)
             : "";
 
     // The button owns its light, inside a LightFrame, so the wall glow shrinks
@@ -130,10 +144,11 @@ export default function NeonButton(props: {
             <NeonLightSource
                 color={color}
                 brightness={tubeBrightness}
-                cornerRadius={BORDER_RADIUS}
+                cornerRadius={BORDER_RADIUS * k}
             >
                 <Pressable
                     onPress={onPress}
+                    disabled={disabled}
                     onPressIn={() => {
                         // Tap-down: shrink + one crisp tick. If still held past the
                         // threshold we escalate to the hold flicker below.
@@ -198,7 +213,12 @@ export default function NeonButton(props: {
                         const { width, height } = e.nativeEvent.layout;
                         setSize({ width, height });
                     }}
-                    style={styles.button}
+                    style={{
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingHorizontal: PADDING_H * k,
+                        paddingVertical: PADDING_V * k,
+                    }}
                 >
                     {size.width > 0 && (
                         <NeonTube
@@ -207,7 +227,7 @@ export default function NeonButton(props: {
                             height={size.height}
                             color={color}
                             warmColor={warmColor}
-                            tubeWidth={TUBE_WIDTH}
+                            tubeWidth={TUBE_WIDTH * Math.max(0.6, k)}
                             glow={GLOW}
                             brightness={tubeBrightness}
                             innerGlow={false}
@@ -217,7 +237,7 @@ export default function NeonButton(props: {
                     {/* Label shares the button's brightness (press flicker, external
                         power) but powers on with its own random delay. */}
                     <NeonText
-                        fontSize={FONT_SIZE}
+                        fontSize={fontSize}
                         color={color}
                         warmColor={warmColor}
                         glow={GLOW}
@@ -230,12 +250,3 @@ export default function NeonButton(props: {
         </LightFrame>
     );
 }
-
-const styles = StyleSheet.create({
-    button: {
-        alignItems: "center",
-        justifyContent: "center",
-        paddingHorizontal: PADDING_H,
-        paddingVertical: PADDING_V,
-    },
-});

@@ -77,6 +77,15 @@ assets/
 
 ---
 
+## Game Model (`src/features/game/`)
+
+- Screens: `/` home (sign + Start/Resume) → `/setup` (TeamEditor, Shuffle, Break!) → `router.replace("/game")` → End game → winner prompt → `dismissTo("/")`.
+- Stores (Zustand + AsyncStorage persist): `game-store` (`draft` roster for setup — kept after a game for rematches; `game` = live game), `history-store` (finished `GameRecord`s, newest first; `recentNames()` feeds the add-player chips). No players table — players are game-local `{id, name}`.
+- Turn order is COMPUTED, never stored: Team 1 always breaks (even turns = Team 1). `playerAt(game, turn)` in `turns.ts` is pure.
+- Mid-game lineup edits = lineup segments: `game.lineups[]` each `{fromTurn, teams, offset}`. An edit adds a segment at the current turn (dropping any scheduled at/after it); earlier turns keep their lineup, so past turns show the team a player was on then. Whoever was next on each team stays next (or the next remaining player). Only renames → no new segment.
+- Turn wheel (`TurnWheel.tsx`): each row is a LightFrame driven by distance from a float `offset` (scale/translate/opacity), so row lights follow the drum. Snaps back 3s after the last touch. Lineup changes show a NeonLine divider + (i) badge between rows.
+- `PowerOnGroup` / `Overlay`: overlays (winner prompt, lineup editor) stagger their neon on when opened.
+
 ## Navigation (NeonStack)
 
 - `NeonRenderer` is mounted ONCE in `src/app/_layout.tsx`, wrapping `<NeonStack />`. Screens never mount their own renderer and must have transparent backgrounds.
@@ -232,10 +241,7 @@ No setState → no React render cascade on slider drag, flicker, or scroll.
 
 ## Planned But Not Yet Built
 
-- **Zustand game state** — `GameState` shape designed (teams, players, turnOrder, scores, history)
 - **Live Activities / Dynamic Island** — iOS only, phase 2. Swift Widget Extension + AppIntent bridge
-- **Actual game screens** — home screen, active game screen, score tracking
-- **Player/team management UI**
 - **Custom neon-sign paths** — `NeonLightSource` tubePath prop is the extension point; demo with animated paths
 
 ---
